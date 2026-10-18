@@ -1,0 +1,49 @@
+name: MineradioApple
+options:
+  bundleIdPrefix: com.swordingk
+  deploymentTarget:
+    iOS: '17.0'
+targets:
+  MineradioApple:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - path: ../../public
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.swordingk.mineradio.apple.preview
+        PRODUCT_NAME: Mineradio
+        SWIFT_VERSION: '5.0'
+        TARGETED_DEVICE_FAMILY: '1,2'
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: NV5R86Q3MS
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Mineradio
+        CFBundleShortVersionString: '0.1.0'
+        CFBundleVersion: '1'
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocalNetworkUsageDescription: 连接你配置的开发电脑，运行原版 Mineradio 网页与音乐接口。
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSAllowsArbitraryLoadsInWebContent: true
+schemes:
+  MineradioApple:
+    build:
+      targets:
+        MineradioApple: all
