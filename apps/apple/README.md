@@ -56,8 +56,13 @@ open in the system browser; account session transfer is not implemented.
 - iOS Simulator SDK build: passed without distribution signing.
 - iPhone/iPad device SDK build: passed without distribution signing.
 - Packaged `public/` contents compared byte-for-byte with repository source.
-- No iOS simulator runtime was installed initially. Runtime download was started;
-  simulator install/launch and screenshots are **not yet verified**.
+- iOS 27 simulator runtime installed. Installed/launched on iPad Pro 11-inch (M5)
+  simulator; original offline startup screen visibly rendered. A temporary debug
+  probe captured no script errors at navigation completion; this is not proof of
+  successful playback or all rendering effects.
+- Xcode's `Contents/Developer/Applications/Simulator.app` is missing on this Mac.
+  The headless device works, but interactive Simulator GUI acceptance is blocked.
+- Debug builds accept `--offline-preview` to start directly in bundled preview.
 - No available iPad or iPhone was connected for device acceptance.
 
 ## Remaining gates

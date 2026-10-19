@@ -34,6 +34,11 @@ struct PlayerHost: View {
         .onAppear {
             draft = storedOrigin
             endpoint = EndpointPolicy.parse(storedOrigin)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--offline-preview") {
+                endpoint = URL(string: "mineradio-app://player/index.html")
+            }
+            #endif
         }
     }
 
