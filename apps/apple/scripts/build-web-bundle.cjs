@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-function buildWebBundle(publicDir, outputDir) {
+function buildWebBundle(publicDir, outputDir, adapterPath) {
   const loader = fs.readFileSync(path.join(publicDir, 'js/index-loader.js'), 'utf8');
   const block = loader.match(/const modulePaths\s*=\s*\[([\s\S]*?)\];/);
   if (!block) throw new Error('Original module list is missing');
@@ -16,11 +16,13 @@ function buildWebBundle(publicDir, outputDir) {
     const source = fs.readFileSync(path.join(publicDir, relative), 'utf8');
     return { path: relative, source, sha256: crypto.createHash('sha256').update(source).digest('hex') };
   });
-  const bundle = modules.map(item => item.source).join('\n');
+  const adapter = adapterPath ? fs.readFileSync(adapterPath, 'utf8') : '';
+  const bundle = modules.map(item => item.source).join('\n') + (adapter ? '\n' + adapter : '');
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(path.join(outputDir, 'index-modules.js'), bundle);
   fs.writeFileSync(path.join(outputDir, 'manifest.json'), JSON.stringify({
     moduleCount: modules.length,
+    appleAdapterSha256: adapter ? crypto.createHash('sha256').update(adapter).digest('hex') : null,
     modules: modules.map(({ path, sha256 }) => ({ path, sha256 })),
     bundleSha256: crypto.createHash('sha256').update(bundle).digest('hex'),
   }, null, 2) + '\n');
@@ -30,6 +32,6 @@ function buildWebBundle(publicDir, outputDir) {
 module.exports = { buildWebBundle };
 if (require.main === module) {
   const root = path.resolve(__dirname, '../../..');
-  const result = buildWebBundle(path.join(root, 'public'), path.resolve(__dirname, '../GeneratedWeb'));
+  const result = buildWebBundle(path.join(root, 'public'), path.resolve(__dirname, '../GeneratedWeb'), path.resolve(__dirname, '../Web/apple-runtime.js'));
   process.stdout.write(`Apple web bundle: ${result.moduleCount} original modules, ${result.bytes} bytes\n`);
 }

@@ -33,3 +33,11 @@ Generated project, bundled JS and build outputs are ignored. Device builds use A
 Still verify login, playlist traversal, play/pause/seek, uninterrupted long playback, frame pacing, memory, touch, rotation and iPhone layout on real hardware. Background/lock-screen playback, interruptions and AirPlay are not accepted. The Mac Qishui signature component cannot be reused on iOS.
 
 Original GPL-3.0-only, copyright and upstream notices remain; see bundled LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md. This is not an official upstream Apple release.
+
+## 2026-10-20 follow-up: resource lifetime and touch
+
+Apple-only postlude now forwards primary touch/pen drags to existing mouse-driven 3D handlers, with pointer capture and cancel cleanup. It does not intercept playlist or button events outside the scene canvas. Desktop free-camera pointer-lock mode remains unsupported for finger input.
+
+On splash completion, release the separate splash WebGL buffer/program/context and reduce its backing canvas to 1×1. Original code previously stopped animation but retained these resources. This is a specific lifetime fix, not evidence that all WebContent termination is solved. Version 0.3.1 (4) needs physical acceptance; no physical installation or UI automation was performed.
+
+Read-only device records: JetsamEvent 2026-10-19 16:09:57 lists Mineradio and related WebKit processes in coalition 837. WebContent lifetimeMax 53840 pages ×16384 bytes ≈841 MiB; GPU lifetimeMax 22128 pages ≈346 MiB. Peaks are separate lifetime maxima, not simultaneous totals. Neither process entry reports a termination reason; the record does not establish that Mineradio was the Jetsam victim. No WebContent-named crash report was returned by the recursive search. Raw system records stay local and are not committed.
