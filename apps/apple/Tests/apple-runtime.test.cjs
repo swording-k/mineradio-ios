@@ -8,15 +8,17 @@ function fixture() {
   const canvas = new Target(), window = new Target();
   const splash = {classList: {contains: () => false}};
   let observer;
+  const styles = [];
+  const zone = {setAttribute() {}};
   const calls = [];
-  const context = {window, renderer: {domElement: canvas}, document: {getElementById: () => splash, readyState: 'complete'},
+  const context = {window, renderer: {domElement: canvas}, document: {getElementById: id => id === 'splash' ? splash : zone, readyState: 'complete', body: {classList: {add() {}}}, head: {appendChild: el => styles.push(el.textContent)}, createElement: () => ({})},
     MouseEvent: Mouse, MutationObserver: class {constructor(fn) {observer = fn;} observe() {} disconnect() {}},
     splashAnimating: true, splashCanvas: {width: 1000, height: 1000},
     splashGl: {deleteBuffer: () => calls.push('buffer'), deleteProgram: () => calls.push('program'), getExtension: () => ({loseContext: () => calls.push('context')})},
     splashGlBuffer: {}, splashGlProgram: {}, splashGlUniforms: {}, splashCtx: {}, splashDust: [1], splashStreaks: [1], splashShards: [1]};
   vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-runtime.js', 'utf8'), context);
   function pointer(type, id = 1, kind = 'touch') {const e = new Event(type, {cancelable: true}); Object.assign(e, {pointerId: id, pointerType: kind, isPrimary: true, clientX: 12, clientY: 30}); canvas.dispatchEvent(e); return e;}
-  return {context, canvas, window, splash, calls, pointer, observe: () => observer()};
+  return {context, canvas, window, splash, calls, pointer, styles, observe: () => observer()};
 }
 test('touch drag reaches original mouse handlers; cancel releases drag without ripple', () => {
   const f = fixture(), seen = [];
@@ -44,4 +46,11 @@ test('splash graphics released only after exit; repeated observer calls are harm
   assert.equal(f.context.splashCanvas.width, 1);
   assert.equal(f.context.splashGl, null);
   assert.equal(f.context.splashDust.length, 0);
+});
+
+test('Apple DIY entry is visible without desktop titlebar or mouse hover', () => {
+  const f = fixture();
+  assert(f.styles.join('').includes('#fullscreen-diy-btn'));
+  assert(f.styles.join('').includes('pointer-events: auto'));
+  assert(f.styles.join('').includes('env(safe-area-inset-right)'));
 });

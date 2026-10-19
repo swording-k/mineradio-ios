@@ -19,7 +19,7 @@ xcodebuild -project apps/apple/MineradioApple.xcodeproj -scheme MineradioApple -
 node --test apps/apple/Tests/web-bundle.test.cjs
 ```
 
-Generated project, bundled JS and build outputs are ignored. Device builds use Apple Development signing, not the Mac Developer ID certificate. Normal startup selects the internal service; the globe button is a development override. `--native-smoke` is an anonymous simulator probe, not user acceptance.
+Generated project, bundled JS and build outputs are ignored. Device builds use Apple Development signing, not the Mac Developer ID certificate. Normal startup selects the internal service; the obsolete developer-server connection form has been removed. `--native-smoke` is an anonymous simulator probe, not user acceptance.
 
 ## Evidence and remaining work (2026-10-19)
 
@@ -41,3 +41,7 @@ Apple-only postlude now forwards primary touch/pen drags to existing mouse-drive
 On splash completion, release the separate splash WebGL buffer/program/context and reduce its backing canvas to 1×1. Original code previously stopped animation but retained these resources. This is a specific lifetime fix, not evidence that all WebContent termination is solved. Version 0.3.1 (4) needs physical acceptance; no physical installation or UI automation was performed.
 
 Read-only device records: JetsamEvent 2026-10-19 16:09:57 lists Mineradio and related WebKit processes in coalition 837. WebContent lifetimeMax 53840 pages ×16384 bytes ≈841 MiB; GPU lifetimeMax 22128 pages ≈346 MiB. Peaks are separate lifetime maxima, not simultaneous totals. Neither process entry reports a termination reason; the record does not establish that Mineradio was the Jetsam victim. No WebContent-named crash report was returned by the recursive search. Raw system records stay local and are not committed.
+
+## DIY controls (0.3.2 development candidate)
+
+The original DIY mode toggle lived in the desktop titlebar and its alternate entry required hover/fullscreen. Apple-only CSS exposes the existing alternate toggle at the safe-area top right and keeps the visual-console entry reachable by touch. It calls original toggleDiyMode and preserves original customization controls. Normal mode still hides the visual console until DIY is enabled. Removed the native globe/server configuration form: normal playback uses the internal loopback service.

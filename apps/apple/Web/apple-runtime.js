@@ -1,5 +1,25 @@
 // Apple-only adapter appended after the unchanged original modules.
 (function installAppleRuntimeAdapter() {
+  document.body.classList.add('apple-client');
+  var style = document.createElement('style');
+  style.textContent = `
+    body.apple-client:not(.splash-active):not(.immersive-mode) #fullscreen-diy-zone {
+      display: flex; top: max(12px, env(safe-area-inset-top));
+      right: max(12px, env(safe-area-inset-right)); left: auto;
+      width: 68px; height: 44px; pointer-events: auto;
+    }
+    body.apple-client:not(.splash-active):not(.immersive-mode) #fullscreen-diy-btn {
+      opacity: 1; pointer-events: auto; transform: none; min-width: 60px; height: 44px;
+    }
+    body.apple-client.diy-mode:not(.immersive-mode) #fx-fab {
+      opacity: 1; visibility: visible; pointer-events: auto; transform: none;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(20px, env(safe-area-inset-bottom));
+    }
+  `;
+  document.head.appendChild(style);
+  var diyZone = document.getElementById('fullscreen-diy-zone');
+  if (diyZone) diyZone.setAttribute('aria-hidden', 'false');
   var canvas = renderer.domElement;
   var activePointer = null;
   canvas.style.touchAction = 'none';
