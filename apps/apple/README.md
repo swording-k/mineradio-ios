@@ -1,79 +1,35 @@
 # Mineradio Apple development client
 
-Refs [#14](https://github.com/swording-k/Mineradio/issues/14). Universal iPhone/iPad
-development prototype. No rebrand, installer release or desktop modification.
+Refs [#14](https://github.com/swording-k/Mineradio/issues/14). Universal iPad/iPhone development port; not a public release or accepted stable client.
 
-## What exists
+## Architecture
 
-- SwiftUI hosts WKWebView and packages the repository's exact `public/` directory
-  as a folder resource. There is no rewritten particle engine or replacement UI.
-- Offline preview loads that directory through a bundle-only URL scheme. Missing
-  routes return an explicit unavailable response, not fabricated platform data.
-- Connected mode loads the original page and APIs from a user-configured server.
-  Persistent WKWebView storage is used. Inline playback is enabled and audio is
-  gesture-gated; application startup does not deliberately start audio.
-- Loading errors, retry and web process termination have visible recovery paths.
-- Supports both device families and portrait/landscape. This is configuration,
-  not proof that every original panel is usable at every size.
+The original `public/` UI and visual engine run in WKWebView. An app-owned service listens only on `127.0.0.1:19363`; no Mac server is required for the implemented Netease routes. Swift implements Netease request encryption, QR login, account status, playlist pagination, search, lyrics and playback URL lookup. Session cookies stay in Keychain. Other music platforms are not implemented in this Apple port. Provider playback URLs determine access; this client does not grant membership or bypass trial restrictions.
+
+Apple builds combine the original 105 JavaScript modules in original order, avoiding the upstream loader's synchronous XHR startup. The build manifest records source hashes. Desktop source is unchanged. Audio uses a bounded streaming relay with Range support rather than buffering a whole song before replying. These changes preserve the visual presets.
 
 ## Build
 
-Requirements: Xcode with iOS SDK, XcodeGen. From repository root:
+Requires Xcode with iOS SDK, Node.js and XcodeGen. From repository root:
 
 ```sh
+node apps/apple/scripts/build-web-bundle.cjs
 xcodegen generate --spec apps/apple/project.yml
-xcodebuild -project apps/apple/MineradioApple.xcodeproj \
-  -scheme MineradioApple -sdk iphonesimulator -configuration Debug \
-  -derivedDataPath apps/apple/build CODE_SIGNING_ALLOWED=NO build
-swiftc apps/apple/Sources/EndpointPolicy.swift \
-  apps/apple/Tests/EndpointPolicyTests.swift -o /tmp/mineradio-endpoint-tests
-/tmp/mineradio-endpoint-tests
+xcodebuild -project apps/apple/MineradioApple.xcodeproj -scheme MineradioApple -sdk iphonesimulator -configuration Debug -derivedDataPath apps/apple/build CODE_SIGNING_ALLOWED=NO build
+node --test apps/apple/Tests/web-bundle.test.cjs
 ```
 
-Generated project and Info.plist are ignored; `project.yml` is the source of truth.
-Device builds need Apple Development signing, provisioning and a trusted device
-for installation; the Mac Developer ID distribution certificate is not used.
+Generated project, bundled JS and build outputs are ignored. Device builds use Apple Development signing, not the Mac Developer ID certificate. Normal startup selects the internal service; the globe button is a development override. `--native-smoke` is an anonymous simulator probe, not user acceptance.
 
-## Use
+## Evidence and remaining work (2026-10-19)
 
-Open the generated Xcode project, choose an iPad simulator, run, then select
-“打开内置原版界面（离线预览）”. No platform service is provided in offline mode.
+- Encryption vectors, native route fixtures, loopback access controls, bundle ordering and incremental media streaming have dedicated checks.
+- Anonymous host-network probe returned QR key, search results, lyrics and a playable URL. This does not prove real iPad playback.
+- Simulator build passed and original startup rendered. End-to-end simulator QR/search probe remains unresolved.
+- Physical iPad Air 4 ran version 0.2.0 (2), but user reports severe freezing and no usable playback. It has NOT passed acceptance.
+- A 16-second read-only Activity Monitor trace measured WebContent about 578 MiB average physical footprint; app about 121 MiB, GPU process about 148 MiB, networking about 8 MiB. The approximate process sum is 855 MiB; it is not an exact unique-memory total. Thermal state remained Nominal. No JavaScript stack profile was obtained, so these measurements do not establish a single rendering bottleneck.
+- Version 0.3.0 (3) contains the synchronous-loader and whole-audio-buffer fixes. It is not yet measured or accepted on the physical iPad. Device control stopped at the user's request; do not resume without authorization.
 
-For connected testing, run an isolated development instance of the existing
-server with test credentials. In a simulator, configure its loopback origin,
-for example `http://127.0.0.1:3000`. On a real iPad use your developer server's
-LAN address. Use a trusted test network: the existing backend was designed for
-desktop/local use, and this change does not turn it into a secure public service.
-Do not expose the desktop app's personal authenticated server publicly.
+Still verify login, playlist traversal, play/pause/seek, uninterrupted long playback, frame pacing, memory, touch, rotation and iPhone layout on real hardware. Background/lock-screen playback, interruptions and AirPlay are not accepted. The Mac Qishui signature component cannot be reused on iOS.
 
-HTTPS origins and local HTTP development origins are accepted; embedded account
-credentials, query strings and paths are rejected. Web login popups currently
-open in the system browser; account session transfer is not implemented.
-
-## Evidence (2026-10-19)
-
-- Endpoint validation: 15 cases passed.
-- iOS Simulator SDK build: passed without distribution signing.
-- iPhone/iPad device SDK build: passed without distribution signing.
-- Packaged `public/` contents compared byte-for-byte with repository source.
-- iOS 27 simulator runtime installed. Installed/launched on iPad Pro 11-inch (M5)
-  simulator; original offline startup screen visibly rendered. A temporary debug
-  probe captured no script errors at navigation completion; this is not proof of
-  successful playback or all rendering effects.
-- Xcode's `Contents/Developer/Applications/Simulator.app` is missing on this Mac.
-  The headless device works, but interactive Simulator GUI acceptance is blocked.
-- Debug builds accept `--offline-preview` to start directly in bundled preview.
-- No available iPad or iPhone was connected for device acceptance.
-
-## Remaining gates
-
-This is not an App Store-ready or standalone streaming client. Verify the custom
-scheme, WebGL, font loading, file import, visual presets, touch, rotation and
-split-window sizing in WebKit. Then implement/verify service independence,
-platform-specific account login, full audio entitlements, background/lock-screen
-playback, audio interruptions, AirPlay and sustained GPU/memory behavior.
-The Mac Qishui 2.9.1 signature component cannot be reused on iOS.
-
-The original copyright notices and GPL-3.0-only remain applicable. Bundled visual
-assets retain their original notices; this is a development port, not a claim of
-authorship or official upstream endorsement.
+Original GPL-3.0-only, copyright and upstream notices remain; see bundled LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md. This is not an official upstream Apple release.

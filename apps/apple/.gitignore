@@ -2,3 +2,4 @@ build/
 build-device/
 *.xcodeproj/
 Info.plist
+GeneratedWeb/

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlayerHost: View {
+    @StateObject private var service = AppleLocalService()
     @AppStorage("apple-development-origin") private var storedOrigin = ""
     @State private var draft = ""
     @State private var endpoint: URL?
@@ -12,11 +13,13 @@ struct PlayerHost: View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
             if let endpoint {
-                OriginalPlayerView(endpoint: endpoint, failure: $failure).id(revision)
+                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken).id(revision)
                     .ignoresSafeArea(edges: .bottom)
+                #if DEBUG
                 Button { draft = storedOrigin; showConnection = true } label: {
                     Image(systemName: "network").padding(12).background(.ultraThinMaterial, in: Circle())
                 }.padding(8).accessibilityLabel("开发连接设置")
+                #endif
                 if let failure {
                     VStack(spacing: 16) {
                         Text("未能加载原版播放器").font(.headline)
@@ -27,18 +30,25 @@ struct PlayerHost: View {
                         .frame(maxWidth: 440).frame(maxWidth: .infinity, maxHeight: .infinity).padding()
                 }
             } else {
-                connectionForm
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text(service.failure ?? "正在启动本机音乐服务…")
+                    if service.failure != nil { Button("重试") { service.start() } }
+                }
             }
         }
         .sheet(isPresented: $showConnection) { connectionForm }
         .onAppear {
             draft = storedOrigin
-            endpoint = EndpointPolicy.parse(storedOrigin)
+            service.start()
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--offline-preview") {
                 endpoint = URL(string: "mineradio-app://player/index.html")
             }
             #endif
+        }
+        .onReceive(service.$origin) { origin in
+            if let origin { endpoint = origin; failure = nil }
         }
     }
 
@@ -46,7 +56,7 @@ struct PlayerHost: View {
         NavigationStack {
             Form {
                 Section("原版网页 · Apple 开发预览") {
-                    Text("直接运行现有 Mineradio 页面和动效。这一阶段需要连接你自己的开发服务，尚非独立运行的移动客户端。")
+                    Text("正常使用会自动连接 App 内置的网易云服务。此处仅供开发调试，平台功能仍需逐项验证。")
                     TextField("https://你的服务地址", text: $draft)
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("连接播放器") {

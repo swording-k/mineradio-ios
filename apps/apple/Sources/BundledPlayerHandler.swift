@@ -16,7 +16,9 @@ final class BundledPlayerHandler: NSObject, WKURLSchemeHandler {
         guard file.path.hasPrefix(safeRoot) else {
             task.didFailWithError(URLError(.noPermissionsToReadFile)); return
         }
-        if let data = try? Data(contentsOf: file) {
+        let source = url.path == "/js/index-loader.js"
+            ? Bundle.main.resourceURL?.appendingPathComponent("GeneratedWeb/index-modules.js") ?? file : file
+        if let data = try? Data(contentsOf: source) {
             let mime: String
             switch file.pathExtension.lowercased() {
             case "js": mime = "application/javascript"

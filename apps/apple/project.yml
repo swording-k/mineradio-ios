@@ -9,6 +9,15 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - path: GeneratedWeb
+        type: folder
+        buildPhase: resources
+      - path: THIRD_PARTY_NOTICES.md
+        buildPhase: resources
+      - path: ../../LICENSE
+        buildPhase: resources
+      - path: ../../NOTICE.md
+        buildPhase: resources
       - path: ../../public
         type: folder
         buildPhase: resources
@@ -21,12 +30,18 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: NV5R86Q3MS
+    preBuildScripts:
+      - name: Bundle original web modules without synchronous XHR
+        script: |
+          export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+          /usr/bin/env node "$SRCROOT/scripts/build-web-bundle.cjs"
+        basedOnDependencyAnalysis: false
     info:
       path: Info.plist
       properties:
         CFBundleDisplayName: Mineradio
-        CFBundleShortVersionString: '0.1.0'
-        CFBundleVersion: '1'
+        CFBundleShortVersionString: '0.3.0'
+        CFBundleVersion: '3'
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
