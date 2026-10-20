@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
     private var listener: NWListener?
     private let api = NeteaseNativeAPI()
     private let media = NeteaseMediaStream()
+    private lazy var qishui = QishuiAuthRuntime(bridge: Bundle.main.resourceURL?.appendingPathComponent("Web/qishui-xhr-bridge.js"))
     private let resourceRoot: URL?
     private let generatedRoot: URL?
     private var active: [UUID: NWConnection] = [:]
@@ -124,7 +125,16 @@ import UniformTypeIdentifiers
                 guard headers["x-mineradio-session"] == sessionToken else {
                     send(connection, status: 403, type: "application/json", data: Data("{\"error\":\"LOCAL_SESSION_REQUIRED\"}".utf8)); return
                 }
-                let result = try await api.handle(url, method: method, body: body)
+                let result: [String: Any]
+                switch url.path {
+                case "/api/qishui/login/qrcode" where method == "GET": result = try await qishui.createQrCode()
+                case "/api/qishui/login/check" where method == "GET":
+                    let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value ?? ""
+                    result = try await qishui.checkQrCode(token)
+                case "/api/qishui/status", "/api/qishui/login/status": result = qishui.status()
+                case "/api/qishui/logout" where method == "POST": result = try await qishui.logout()
+                default: result = try await api.handle(url, method: method, body: body)
+                }
                 send(connection, status: 200, type: "application/json", data: try JSONSerialization.data(withJSONObject: result))
             } else {
                 guard method == "GET", let root = resourceRoot else { throw URLError(.fileDoesNotExist) }

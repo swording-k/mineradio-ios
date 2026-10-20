@@ -9,6 +9,12 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - path: Web
+        type: folder
+        buildPhase: resources
+      - path: ../../qishui-auth-v6
+        type: folder
+        buildPhase: resources
       - path: GeneratedWeb
         type: folder
         buildPhase: resources

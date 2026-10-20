@@ -76,7 +76,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         private func report(_ error: Error) {
             if (error as NSError).code != NSURLErrorCancelled {
-                parent.failure = "请确认开发服务已启动、设备网络可达并允许本地网络访问。\n" + error.localizedDescription
+                parent.failure = "设备内播放器页面加载失败，请重试。\n" + error.localizedDescription
             }
         }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

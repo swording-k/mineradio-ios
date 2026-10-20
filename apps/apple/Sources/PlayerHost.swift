@@ -32,6 +32,21 @@ struct PlayerHost: View {
         .onAppear {
             service.start()
             #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--qishui-smoke") {
+                Task { @MainActor in
+                    let runtime = QishuiAuthRuntime(bridge: Bundle.main.resourceURL?.appendingPathComponent("Web/qishui-xhr-bridge.js"))
+                    let result: [String: Any]
+                    do {
+                        let qr = try await runtime.createQrCode()
+                        result = ["qrAvailable": !(qr["qrcode"] as? String ?? "").isEmpty,
+                                  "tokenAvailable": !(qr["token"] as? String ?? "").isEmpty]
+                    } catch { result = ["qrAvailable": false, "error": error.localizedDescription, "diagnostics": runtime.diagnostics, "jsMessage": (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String ?? ""] }
+                    if let data = try? JSONSerialization.data(withJSONObject: result),
+                       let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                        try? data.write(to: directory.appendingPathComponent("qishui-smoke.json"))
+                    }
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("--offline-preview") {
                 endpoint = URL(string: "mineradio-app://player/index.html")
             }
