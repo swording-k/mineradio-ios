@@ -55,3 +55,13 @@ The first anonymous macOS WebKit probe successfully generated a real QR PNG and 
 The adapter intentionally returns loggedIn=false / verifying after cookie confirmation until the Apple account/catalogue adapter validates identity. Secondary verification (MFA), account/library and full-track playback are not implemented. The Mac-only native signature helper is not bundled. Other music providers remain unsupported. This login prototype must not be advertised as a working Qishui client.
 
 Eight JS adapter/bridge/bundle checks and the Swift host/signature/poll/QR contract checks pass. Actual iPad QR, confirmation, logout and long-run playback are separate outstanding gates. Debug --qishui-smoke writes only safe booleans/stages to the simulator's Documents folder; never commit QR tokens, cookies or raw network responses.
+
+## 0.3.3 (6): bounded lyric resources and original control anchors
+
+A newer read-only device record, JetsamEvent-2026-10-20-001922, identifies the GPU process in the same coalition as foreground Mineradio with reason highwater: 19430 pages ×16384 bytes ≈303.6 MiB. WebContent was the largest process; lifetime peak 79955 pages ≈1249.3 MiB. This supersedes the earlier inconclusive records for that event, but does not establish the precise allocation responsible or the cause of every reported exit. Raw device logs are not committed.
+
+Source inspection confirms whole-song text runway preloading and retention: original trimStageLyricPersistentTrackRows evicts effect layers but preserves text rows. The Apple-only adapter now disables the additional whole-song runway, retains the original visible offsets and 24-line lookahead (plus small eviction hysteresis), releases offscreen rows through disposeStageLyricResidentRow, and caps the optional high-quality lyric texture pool at 24 MiB. This bounds these caches rather than promising a total app-memory cap. Seeking may need to rebuild evicted lines and requires acceptance testing. Current visible lyric styling is preserved.
+
+DIY now follows the original fullscreen account-region CSS anchors and tracking. The FX button moves above the playback controls when visible, with larger side/bottom spacing and matching panel inset. No desktop shared files changed.
+
+Seven JS regression checks pass, including a 1000-line fixture with translated visible rows, bounded retention, disabled whole-song runway and texture-pool budget. Physical memory/FPS, seeking, button placement and long playback remain pending. No physical installation, launch or UI control was performed.

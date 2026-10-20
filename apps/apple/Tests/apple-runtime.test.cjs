@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
-function fixture() {
+function fixture(extra = {}) {
   class Target extends EventTarget { constructor() { super(); this.style = {}; } setPointerCapture() {} }
   class Mouse extends Event { constructor(type, options) { super(type, options); Object.assign(this, {clientX: options.clientX, clientY: options.clientY, button: options.button}); } }
   const canvas = new Target(), window = new Target();
@@ -16,6 +16,7 @@ function fixture() {
     splashAnimating: true, splashCanvas: {width: 1000, height: 1000},
     splashGl: {deleteBuffer: () => calls.push('buffer'), deleteProgram: () => calls.push('program'), getExtension: () => ({loseContext: () => calls.push('context')})},
     splashGlBuffer: {}, splashGlProgram: {}, splashGlUniforms: {}, splashCtx: {}, splashDust: [1], splashStreaks: [1], splashShards: [1]};
+  Object.assign(context, extra);
   vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-runtime.js', 'utf8'), context);
   function pointer(type, id = 1, kind = 'touch') {const e = new Event(type, {cancelable: true}); Object.assign(e, {pointerId: id, pointerType: kind, isPrimary: true, clientX: 12, clientY: 30}); canvas.dispatchEvent(e); return e;}
   return {context, canvas, window, splash, calls, pointer, styles, observe: () => observer()};
@@ -53,4 +54,33 @@ test('Apple DIY entry is visible without desktop titlebar or mouse hover', () =>
   assert(f.styles.join('').includes('#fullscreen-diy-btn'));
   assert(f.styles.join('').includes('pointer-events: auto'));
   assert(f.styles.join('').includes('env(safe-area-inset-right)'));
+});
+
+test('Apple bounds lyric residency across long playback and keeps translated visible rows', () => {
+  const disposed = [];
+  const f = fixture({
+    lyricsLines: Array(1000).fill('lyric'), fx: {},
+    lyricDisplayOffsetsForMode: () => [-2, 0, 2],
+    stageLyricPersistentNextTextRunwayRange: () => ({start: 0, end: 999}),
+    trimStageLyricPersistentTrackRows: () => false,
+    disposeStageLyricResidentRow: row => disposed.push(row.lineIndex),
+    updateStageLyricPersistentResidentBounds: data => {data.updated = true;},
+    lyricQualityPoolBudgetBytes: () => 192 * 1024 * 1024,
+  });
+  const rows = Array.from({length: 1000}, (_, lineIndex) => ({lineIndex, isPrimary: true}));
+  rows.push({lineIndex: 999, parentIndex: 50, isTranslation: true});
+  const data = {trackPersistent: true, rowLayers: rows};
+  f.context.trimStageLyricPersistentTrackRows({userData: {lyric: data}}, 50);
+  assert(data.rowLayers.length <= 42);
+  assert(data.rowLayers.some(row => row.isTranslation));
+  assert(data.rowLayers.some(row => row.lineIndex === 48));
+  assert(data.rowLayers.some(row => row.lineIndex === 52));
+  assert(disposed.length > 900);
+  assert.equal(f.context.stageLyricPersistentNextTextRunwayRange(data, 50), null);
+  assert(f.context.lyricQualityPoolBudgetBytes(4) <= 24 * 1024 * 1024);
+});
+test('Apple controls use original account anchor and leave room above playback controls', () => {
+  const css = fixture().styles.join('');
+  assert(css.includes('var(--fullscreen-diy-top'));
+  assert(css.includes('body.apple-client.diy-mode.controls-visible #fx-fab'));
 });
