@@ -132,7 +132,7 @@ import UniformTypeIdentifiers
                     let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value ?? ""
                     result = try await qishui.checkQrCode(token)
                 case "/api/qishui/status", "/api/qishui/login/status": result = qishui.status()
-                case "/api/qishui/logout" where method == "POST": result = try await qishui.logout()
+                case "/api/qishui/logout" where method == "GET" || method == "POST": result = try await qishui.logout()
                 default: result = try await api.handle(url, method: method, body: body)
                 }
                 send(connection, status: 200, type: "application/json", data: try JSONSerialization.data(withJSONObject: result))
