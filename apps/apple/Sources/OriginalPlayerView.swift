@@ -14,6 +14,7 @@ struct OriginalPlayerView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        config.ignoresViewportScaleLimits = false
         if openAccount != nil {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAccountLogin")
         }
@@ -64,6 +65,10 @@ struct OriginalPlayerView: UIViewRepresentable {
         view.backgroundColor = .black
         view.scrollView.backgroundColor = .black
         view.scrollView.contentInsetAdjustmentBehavior = .never
+        // Scene pinch is handled by the Apple pointer bridge. Viewport limits prevent
+        // page zoom from scaling/moving every HUD target along with the visual stage.
+        // This does not disable iOS's system accessibility Zoom.
+        view.scrollView.bouncesZoom = false
         view.load(URLRequest(url: endpoint, timeoutInterval: 20))
         return view
     }
@@ -116,6 +121,8 @@ struct OriginalPlayerView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // WebKit may configure its scroll recognizers while loading the page.
+            webView.scrollView.bouncesZoom = false
             parent.failure = nil
             updateAccountPresentation(webView, force: true)
             #if DEBUG

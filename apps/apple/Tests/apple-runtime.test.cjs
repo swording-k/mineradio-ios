@@ -135,3 +135,27 @@ test('first gesture primes AudioContext before any song/audio element exists', a
   assert(f.context.audioCtx instanceof Context);
   assert.equal(started,1);
 });
+
+test('two-finger pinch reaches original zoom without generating click or one-finger drag',()=>{
+  class Wheel extends Event {constructor(type,options){super(type,options);Object.assign(this,{deltaY:options.deltaY,clientX:options.clientX,clientY:options.clientY});}}
+  const f=fixture({WheelEvent:Wheel}), wheels=[], clicks=[];
+  f.canvas.addEventListener('wheel',e=>wheels.push(e.deltaY));
+  f.canvas.addEventListener('click',()=>clicks.push(1));
+  f.pointer('pointerdown',1,'touch',100,100);
+  f.pointer('pointerdown',2,'touch',200,100);
+  f.pointer('pointermove',2,'touch',250,100);
+  f.pointer('pointerup',2,'touch',250,100);
+  f.pointer('pointerup',1,'touch',100,100);
+  assert(wheels.length>0);assert(wheels[0]<0);assert.equal(clicks.length,0);
+  f.pointer('pointerdown',3,'touch',100,100);f.pointer('pointerup',3,'touch',100,100);
+  assert.equal(clicks.length,1);
+});
+
+test('a short stage tap reveals touch controls without needing to pass over the handle',()=>{
+  const f=fixture();let reveals=0;
+  f.window.__mineradioAppleRevealControls=()=>reveals++;
+  f.pointer('pointerdown');f.pointer('pointerup');
+  assert.equal(reveals,1);
+  f.pointer('pointerdown');f.pointer('pointermove',1,'touch',80,100);f.pointer('pointerup',1,'touch',80,100);
+  assert.equal(reveals,1);
+});

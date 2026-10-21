@@ -1,10 +1,18 @@
 // Apple-only responsive HUD. Preserve original controls, visual materials and handlers.
 (function installAppleLayout() {
   var viewport = document.querySelector('meta[name="viewport"]');
-  if (viewport && !/viewport-fit\s*=/.test(viewport.content)) viewport.content += ', viewport-fit=cover';
+  if (viewport) {
+    // WKWebView respects viewport scale limits. Pinch belongs to the stage,
+    // never to the complete player HUD (system accessibility Zoom is separate).
+    var viewportParts = viewport.content.split(',').filter(function (part) {
+      return !/^\s*(initial-scale|minimum-scale|maximum-scale|user-scalable|viewport-fit)\s*=/i.test(part);
+    });
+    viewport.content = viewportParts.concat(['initial-scale=1', 'minimum-scale=1', 'maximum-scale=1', 'user-scalable=no', 'viewport-fit=cover']).join(', ');
+  }
   var style = document.createElement('style');
   style.dataset.appleLayout = 'phone';
   style.textContent = `
+  .apple-panel-backdrop { display: none; }
   .apple-panel-close, #apple-controls-more, #apple-controls-collapse, #apple-library-btn { display: none; }
   body.apple-client #bottom-bar.apple-controls-collapsed {
     opacity: 0 !important; pointer-events: none !important;
@@ -21,6 +29,13 @@
       --apple-header-top: calc(var(--apple-safe-top) + 12px);
       --apple-search-top: calc(var(--apple-safe-top) + 64px);
     }
+    body.apple-client .apple-panel-backdrop:not([hidden]) { display: block; position: fixed; inset: 0; z-index: 1500; border: 0; padding: 0; background: transparent; touch-action: none; }
+    body.apple-client #bottom-bar.apple-touch-controls-open {
+      opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; transform: none !important;
+      background: rgba(8, 8, 12, .72) !important; backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important; filter: none !important;
+    }
+    body.apple-client #bottom-bar.apple-touch-controls-open .ctrl-btn { pointer-events: auto; }
+    body.apple-client .apple-panel-close { z-index: 50 !important; }
     body.apple-client #top-right {
       top: var(--apple-header-top) !important;
       left: calc(var(--apple-safe-left) + 12px) !important;
@@ -130,6 +145,9 @@
     body.apple-client:has(#bottom-bar.visible:not(.soft-hidden):not(.apple-controls-collapsed)) #fx-fab {
       bottom: calc(var(--apple-safe-bottom) + var(--apple-bar-height, 190px) + 24px) !important;
     }
+    body.apple-client:has(#bottom-bar.apple-touch-controls-open) #fx-fab {
+      bottom: calc(var(--apple-safe-bottom) + var(--apple-bar-height, 100px) + 24px) !important;
+    }
     body.apple-client #fx-fab-hide-btn { display: none; }
     body.apple-client #fx-panel, body.apple-client #playlist-panel {
       box-sizing: border-box; position: fixed; left: calc(var(--apple-safe-left) + 12px) !important;
@@ -185,7 +203,7 @@
   `;
   document.head.appendChild(style);
   [['fx-panel', function () { if (typeof toggleFxPanel === 'function') toggleFxPanel(false); }],
-   ['playlist-panel', function () { if (typeof togglePlaylistPanel === 'function') togglePlaylistPanel(false); }]].forEach(function (entry) {
+   ['playlist-panel', function () { if (typeof togglePlaylistPanel === 'function') togglePlaylistPanel(false); cleanupPanel('playlist-panel'); }]].forEach(function (entry) {
     var panel = document.getElementById(entry[0]);
     if (!panel) return;
     var close = document.createElement('button');
@@ -211,6 +229,47 @@
   var mixNext = mix && mix.nextSibling;
   var actions = document.querySelector('#controls .actions');
   var phone = window.matchMedia('(max-width: 767px), (max-height: 500px) and (max-width: 1024px)');
+  if (typeof updateControlsAutoHideFromPointer === 'function') {
+    var desktopControlsPointer = updateControlsAutoHideFromPointer;
+    updateControlsAutoHideFromPointer = function () {
+      if (phone.matches && !hoverPointer.matches) return;
+      return desktopControlsPointer.apply(this, arguments);
+    };
+  }
+  var backdrop;
+  function syncBackdrop() {
+    if (!backdrop) return;
+    var panel = document.getElementById('playlist-panel');
+    backdrop.hidden = !(phone.matches && panel && (panel.classList.contains('peek') || panel.classList.contains('show')));
+  }
+  function cleanupPanel(id) {
+    var panel = document.getElementById(id);
+    if (!panel || !phone || !phone.matches) return;
+    var key = id === 'playlist-panel' ? 'pl' : 'fx';
+    if (typeof peekTimers !== 'undefined' && peekTimers[key]) { clearTimeout(peekTimers[key]); peekTimers[key] = null; }
+    panel.classList.remove('show', 'peek', 'pinned');
+    if (id === 'playlist-panel' && typeof playlistPanelPinned !== 'undefined') playlistPanelPinned = false;
+    syncBackdrop();
+  }
+  if (typeof togglePlaylistPanel === 'function') {
+    var originalTogglePlaylistPanel = togglePlaylistPanel;
+    togglePlaylistPanel = function (force) {
+      if (!phone.matches) return originalTogglePlaylistPanel.apply(this, arguments);
+      var panel = document.getElementById('playlist-panel');
+      var wasOpen = panel && (panel.classList.contains('show') || panel.classList.contains('peek'));
+      if (force === false || (force == null && wasOpen)) { cleanupPanel('playlist-panel'); return; }
+      var result = originalTogglePlaylistPanel.call(this, true); syncBackdrop(); return result;
+    };
+  }
+  if (document.body && document.body.appendChild) {
+    backdrop = document.createElement('button'); backdrop.type = 'button'; backdrop.className = 'apple-panel-backdrop'; backdrop.hidden = true;
+    backdrop.setAttribute('aria-label', '关闭歌单并返回播放器');
+    backdrop.addEventListener('pointerdown', function (event) { event.preventDefault(); });
+    backdrop.addEventListener('pointerup', function (event) { event.preventDefault(); event.stopPropagation(); cleanupPanel('playlist-panel'); });
+    backdrop.addEventListener('click', function (event) { event.preventDefault(); event.stopPropagation(); cleanupPanel('playlist-panel'); });
+    document.body.appendChild(backdrop);
+  }
+
   function arrangeQuality() {
     if (quality && modes && qualityParent) {
       if (phone.matches && quality.parentNode !== modes) modes.appendChild(quality);
@@ -265,15 +324,31 @@
     });
     header.insertBefore(library, user);
   }
+  var touchHideTimer;
   function unfoldControls() {
     if (!bar) return;
     bar.classList.remove('apple-controls-collapsed');
+    if (phone.matches) {
+      if (document.body) document.body.classList.remove('home-controls-locked');
+      bar.classList.add('visible', 'apple-touch-controls-open');
+      bar.classList.remove('soft-hidden');
+      if (touchHideTimer) clearTimeout(touchHideTimer);
+      if (typeof controlsAutoHide === 'undefined' || controlsAutoHide) touchHideTimer = setTimeout(function idle() {
+        // Do not dismiss a slider/popover while it is in use.
+        if (down || (document.querySelector && document.querySelector('#volume-control.open, #quality-control.open, #lyric-timing-control.open'))) {
+          touchHideTimer = setTimeout(idle, 8000); return;
+        }
+        foldControls();
+      }, 8000);
+    }
     if (document.body) document.body.classList.remove('apple-controls-folded');
     if (typeof controlsHovering !== 'undefined' && !hoverPointer.matches) controlsHovering = false;
     if (typeof holdBottomControlsVisible === 'function') holdBottomControlsVisible(4000);
   }
   function foldControls() {
     if (!bar) return;
+    if (touchHideTimer) clearTimeout(touchHideTimer);
+    bar.classList.remove('apple-touch-controls-open');
     if (typeof closeMiniQueue === 'function') closeMiniQueue();
     if (typeof controlsRevealHoldUntil !== 'undefined') controlsRevealHoldUntil = 0;
     if (typeof controlsHovering !== 'undefined') controlsHovering = false;
@@ -304,7 +379,7 @@
       if (swipe) { suppressClickUntil = Date.now() + 600; foldControls(); return; }
       setTimeout(function () {
         if (typeof controlsHovering !== 'undefined') controlsHovering = false;
-        if (typeof holdBottomControlsVisible === 'function') holdBottomControlsVisible(4000);
+        unfoldControls();
       }, 0);
     }
     bar.addEventListener('pointerup', finishTouch, {passive: true});
@@ -314,7 +389,11 @@
       if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
     }, true);
   }
-  if (handle) handle.addEventListener('click', unfoldControls, true);
+  if (handle) {
+    handle.addEventListener('pointerup', function (event) { if (event.pointerType === 'touch' || event.pointerType === 'pen') unfoldControls(); }, true);
+    handle.addEventListener('click', unfoldControls, true);
+  }
+  window.__mineradioAppleRevealControls = function () { if (phone.matches) unfoldControls(); };
   function updateViewport() {
     var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     root.style.setProperty('--apple-visible-height', Math.round(height) + 'px');

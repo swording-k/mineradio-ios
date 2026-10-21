@@ -126,6 +126,7 @@
     ray.setFromCamera(new THREE.Vector2(x, y), camera);
     return ray;
   };
+  var fingers = new Map(), pinching = false, pinchDistance = 0;
   var activePointer = null;
   var touchStart = null;
   var suppressNativeClickUntil = 0;
@@ -138,7 +139,19 @@
   }
   canvas.addEventListener('pointerdown', function (event) {
     if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
-    if (!event.isPrimary || activePointer !== null) return;
+    if (typeof freeCamera !== 'undefined' && freeCamera.active) return;
+    fingers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (fingers.size >= 2) {
+      event.preventDefault(); canvas.setPointerCapture(event.pointerId);
+      pinching = true;
+      var points = Array.from(fingers.values()); pinchDistance = Math.hypot(points[0].x-points[1].x, points[0].y-points[1].y);
+      activePointer = null; touchStart = null;
+      if (typeof orbit !== 'undefined') orbit.rotating = false;
+      if (typeof particlePointerSpin !== 'undefined') particlePointerSpin.active = false;
+      if (typeof idleGuidePointerUp === 'function') idleGuidePointerUp();
+      return;
+    }
+    if (!event.isPrimary || activePointer !== null || pinching) return;
     // Pointer lock has no equivalent for a finger. Do not enter desktop free-camera controls.
     if (typeof freeCamera !== 'undefined' && freeCamera.active) return;
     activePointer = event.pointerId;
@@ -148,21 +161,44 @@
     mouse(canvas, 'mousedown', event);
   });
   canvas.addEventListener('pointermove', function (event) {
+    if (fingers.has(event.pointerId)) fingers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (pinching) {
+      event.preventDefault();
+      if (fingers.size >= 2) {
+        var points = Array.from(fingers.values()), distance = Math.hypot(points[0].x-points[1].x, points[0].y-points[1].y);
+        if (distance > 0 && pinchDistance > 0 && typeof WheelEvent !== 'undefined') canvas.dispatchEvent(new WheelEvent('wheel', {
+          bubbles: true, cancelable: true, clientX:(points[0].x+points[1].x)/2, clientY:(points[0].y+points[1].y)/2,
+          deltaY: Math.max(-200, Math.min(200, -Math.log(distance/pinchDistance)*240)), deltaMode: 0
+        }));
+        pinchDistance = distance;
+      }
+      return;
+    }
     if (event.pointerId !== activePointer) return;
     if (touchStart && Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 8) touchStart.moved = true;
     event.preventDefault(); mouse(window, 'mousemove', event);
   });
   canvas.addEventListener('pointerup', function (event) {
+    fingers.delete(event.pointerId);
+    if (pinching) {
+      event.preventDefault(); suppressNativeClickUntil = Date.now() + 800;
+      if (!fingers.size) { pinching = false; pinchDistance = 0; }
+      return;
+    }
     if (event.pointerId !== activePointer) return;
     event.preventDefault(); activePointer = null; mouse(window, 'mouseup', event);
     suppressNativeClickUntil = Date.now() + 800;
     var tapped = touchStart && !touchStart.moved && Date.now() - touchStart.at < 650 &&
       Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) <= 8;
     touchStart = null;
-    if (tapped) mouse(canvas, 'click', event);
+    if (tapped) {
+      mouse(canvas, 'click', event);
+      if (typeof window.__mineradioAppleRevealControls === 'function') window.__mineradioAppleRevealControls();
+    }
   });
   function cancel(event) {
-    if (event.pointerId !== activePointer) return;
+    if (event.pointerId !== activePointer && !fingers.has(event.pointerId)) return;
+    fingers.clear(); pinching = false; pinchDistance = 0;
     activePointer = null; touchStart = null; suppressNativeClickUntil = Date.now() + 800;
     if (typeof orbit !== 'undefined') orbit.rotating = false;
     if (typeof particlePointerSpin !== 'undefined') particlePointerSpin.active = false;
