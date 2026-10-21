@@ -13,6 +13,10 @@ final class PhoneLayoutUITests: XCTestCase {
         XCTAssertTrue(inspect.waitForExistence(timeout: 45))
         inspect.tap()
         XCTAssertTrue(app.staticTexts["布局检查通过"].waitForExistence(timeout: 10))
+        let more = app.buttons["更多播放控制"]
+        XCTAssertTrue(more.isHittable)
+        XCTAssertLessThan(app.buttons["播放/暂停"].frame.height, 70)
+        more.tap()
         let volume = app.buttons["音量 / 静音"]
         XCTAssertTrue(volume.isHittable)
         volume.tap()
@@ -21,6 +25,10 @@ final class PhoneLayoutUITests: XCTestCase {
         inspect.tap()
         XCTAssertTrue(app.staticTexts["布局检查通过"].waitForExistence(timeout: 10))
         volume.tap()
+        app.buttons["收起播放控制条"].tap()
+        XCTAssertFalse(app.buttons["播放/暂停"].isHittable)
+        app.buttons["展开播放器控制台"].tap()
+        XCTAssertTrue(app.buttons["播放/暂停"].isHittable)
         let console = app.buttons["视觉控制台"]
         XCTAssertTrue(console.isHittable)
         console.tap()
@@ -31,14 +39,37 @@ final class PhoneLayoutUITests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         inspect.tap()
         XCTAssertTrue(app.staticTexts["布局检查通过"].waitForExistence(timeout: 10))
+        if !volume.isHittable { more.tap() }
         XCTAssertTrue(volume.isHittable)
         volume.tap()
         XCTAssertTrue(app.sliders["音量"].isHittable)
         inspect.tap()
         XCTAssertTrue(app.staticTexts["布局检查通过"].waitForExistence(timeout: 10))
+        volume.tap()
+        app.buttons["打开歌单与播放队列"].tap()
+        XCTAssertTrue(app.buttons["当前队列"].isHittable)
+        XCTAssertTrue(app.buttons["我的歌单"].isHittable)
+        XCTAssertTrue(app.buttons["我的播客"].isHittable)
+        XCTAssertTrue(app.buttons["关闭歌单面板"].isHittable)
         let evidence = XCTAttachment(screenshot: app.screenshot())
         evidence.name = "webkit-phone-landscape-fixture"
         evidence.lifetime = .keepAlways
         add(evidence)
+    }
+    @MainActor func testTouchControlsAutoHideAndRestore() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--apple-layout-smoke", "--apple-controls-auto-hide-smoke"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        let more = app.buttons["更多播放控制"]
+        XCTAssertTrue(more.waitForExistence(timeout: 45))
+        app.buttons["展开播放器控制台"].tap()
+        XCTAssertTrue(more.isHittable)
+        let hidden = NSPredicate(format: "hittable == false")
+        expectation(for: hidden, evaluatedWith: more)
+        waitForExpectations(timeout: 12)
+        app.buttons["展开播放器控制台"].tap()
+        XCTAssertTrue(more.isHittable)
     }
 }

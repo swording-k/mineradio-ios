@@ -5,7 +5,13 @@
   var style = document.createElement('style');
   style.dataset.appleLayout = 'phone';
   style.textContent = `
-  .apple-panel-close { display: none; }
+  .apple-panel-close, #apple-controls-more, #apple-controls-collapse, #apple-library-btn { display: none; }
+  body.apple-client #bottom-bar.apple-controls-collapsed {
+    opacity: 0 !important; pointer-events: none !important;
+    transform: translateY(calc(100% + 48px)) !important; visibility: hidden;
+  }
+  body.apple-client.apple-controls-folded #bottom-handle { opacity: .7; pointer-events: auto; z-index: 1300; }
+
   @media (max-width: 767px), (max-height: 500px) and (max-width: 1024px) {
     body.apple-client {
       --apple-safe-top: env(safe-area-inset-top, 0px);
@@ -76,22 +82,34 @@
       padding: 12px; gap: 6px; border-radius: 28px;
     }
     body.apple-client #controls {
-      display: grid !important; grid-template-columns: minmax(0, 1fr) !important;
-      grid-template-rows: auto auto auto; gap: 4px; width: 100%; position: static;
+      display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important;
+      grid-template-rows: auto auto; gap: 4px; width: 100%; position: static;
     }
     body.apple-client #controls .control-cluster {
-      grid-column: 1 !important; min-width: 0; width: 100%; margin: 0;
+      min-width: 0; width: 100%; margin: 0;
       height: auto; min-height: 44px; gap: 4px; align-items: center; position: static;
     }
-    body.apple-client #controls .actions { grid-row: 1; justify-content: flex-start; }
-    body.apple-client #controls .transport { grid-row: 2; justify-content: space-between; }
-    body.apple-client #controls .modes { display: flex !important; grid-row: 3; justify-content: space-between; gap: 0; }
+    body.apple-client #controls .actions { grid-column: 1; grid-row: 1; justify-content: flex-start; }
+    body.apple-client #controls .transport { grid-column: 2; grid-row: 1; width: auto; gap: 2px; justify-content: flex-end; }
+    body.apple-client #controls .modes { display: none !important; grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; justify-content: flex-start; gap: 4px; }
+    body.apple-client #bottom-bar.apple-controls-expanded #controls .modes { display: flex !important; }
+    body.apple-client #apple-controls-more { display: inline-flex; font-size: 18px; }
+    body.apple-client #controls #apple-controls-collapse { padding: 0; font-size: 12px; }
+    body.apple-client #apple-library-btn { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; min-width: 44px; height: 44px; border-radius: 50%; color: inherit; background: rgba(20,20,24,.8); border: 1px solid rgba(255,255,255,.22); }
+    body.apple-client #controls #play-btn { flex-basis: 48px; width: 48px; height: 48px; }
+    body.apple-client #bottom-bar.soft-hidden { transform: translateY(calc(100% + 48px)) !important; }
+    body.apple-client #playlist-panel .qi-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 14px; line-height: 1.4; }
+    body.apple-client #playlist-panel .queue-item { min-height: 60px; gap: 8px; }
+    body.apple-client #playlist-panel .qi-info { flex: 1 1 0; min-width: 0; }
+    body.apple-client #playlist-panel .qi-act { opacity: 1; flex-direction: column; }
+    body.apple-client #playlist-panel .panel-tab { min-height: 44px; }
+
     body.apple-client #controls .ctrl-btn {
       display: inline-flex !important; box-sizing: border-box; flex: 0 0 44px;
       min-width: 44px; width: 44px; min-height: 44px; height: 44px; padding: 10px;
       align-items: center; justify-content: center; touch-action: manipulation;
     }
-    body.apple-client #controls #play-btn { flex-basis: 56px; width: 56px; height: 56px; }
+    body.apple-client #controls #play-btn { flex-basis: 48px; width: 48px; height: 48px; }
     body.apple-client #controls .control-track { display: flex !important; min-width: 0; flex: 1 1 0; gap: 8px; }
     body.apple-client #controls .control-cover { flex: 0 0 44px; width: 44px; height: 44px; }
     body.apple-client #controls .control-meta { min-width: 0; max-width: none; flex: 1 1 0; }
@@ -109,7 +127,7 @@
       bottom: calc(var(--apple-safe-bottom) + 64px) !important;
       width: 48px; height: 48px;
     }
-    body.apple-client:has(#bottom-bar.visible:not(.soft-hidden)) #fx-fab {
+    body.apple-client:has(#bottom-bar.visible:not(.soft-hidden):not(.apple-controls-collapsed)) #fx-fab {
       bottom: calc(var(--apple-safe-bottom) + var(--apple-bar-height, 190px) + 24px) !important;
     }
     body.apple-client #fx-fab-hide-btn { display: none; }
@@ -139,13 +157,14 @@
     body.apple-client .volume-popover, body.apple-client .quality-popover, body.apple-client .lyric-timing-popover {
       box-sizing: border-box; left: 0 !important; right: 0 !important; width: 100% !important; max-width: none;
       bottom: calc(100% + 12px) !important; top: auto !important; transform: none !important;
+      max-height: calc(var(--apple-visible-height, 100dvh) - var(--apple-bar-height, 100px) - var(--apple-safe-top) - var(--apple-safe-bottom) - 36px); overflow-y: auto; overscroll-behavior: contain;
     }
     body.apple-client #fx-panel input[type="range"], body.apple-client .volume-popover input[type="range"] { min-height: 36px; touch-action: pan-y; }
     body.apple-client #fx-panel .fx-seg, body.apple-client #fx-panel .lyric-font-grid { flex-wrap: wrap; }
   }
   @media (max-width: 360px) {
     body.apple-client #controls .transport { gap: 0; }
-    body.apple-client #controls #play-btn { flex-basis: 52px; width: 52px; height: 52px; }
+    body.apple-client #controls .control-cover { display: none; }
   }
   @media (orientation: landscape) and (max-height: 500px) and (max-width: 1024px) {
     body.apple-client { --apple-search-top: calc(var(--apple-safe-top) + 8px); --apple-header-top: calc(var(--apple-safe-top) + 8px); --apple-search-width: min(35vw, 280px); }
@@ -160,6 +179,9 @@
     body.apple-client #controls #play-btn { flex-basis: 48px; width: 48px; height: 48px; }
     body.apple-client #fx-panel, body.apple-client #playlist-panel { top: calc(var(--apple-safe-top) + 60px) !important; left: auto !important; width: min(420px, calc(100vw - var(--apple-safe-left) - var(--apple-safe-right) - 24px)) !important; max-height: calc(var(--apple-visible-height, 100dvh) - var(--apple-safe-top) - var(--apple-safe-bottom) - 72px); }
   }
+    @media (orientation: landscape) and (max-height: 500px) and (max-width: 1024px) {
+      body.apple-client #playlist-panel { left: calc(var(--apple-safe-left) + 12px) !important; right: auto !important; width: min(420px, calc(55vw - var(--apple-safe-left) - 12px)) !important; }
+    }
   `;
   document.head.appendChild(style);
   [['fx-panel', function () { if (typeof toggleFxPanel === 'function') toggleFxPanel(false); }],
@@ -195,14 +217,104 @@
       else if (!phone.matches && quality.parentNode !== qualityParent) qualityParent.insertBefore(quality, qualityNext);
     }
     if (mix && actions && mixParent) {
-      if (phone.matches && mix.parentNode !== actions) actions.appendChild(mix);
+      if (phone.matches && mix.parentNode !== modes) modes.appendChild(mix);
       else if (!phone.matches && mix.parentNode !== mixParent) mixParent.insertBefore(mix, mixNext);
     }
   }
+  var relocated = ['heart-btn','collect-btn','play-mode-btn','mini-queue-btn'].map(function (id) {
+    var element = document.getElementById(id);
+    return element && {element: element, parent: element.parentNode, next: element.nextSibling};
+  }).filter(Boolean);
+  var arrangeOriginal = arrangeQuality;
+  arrangeQuality = function () {
+    arrangeOriginal();
+    relocated.forEach(function (item) {
+      if (phone.matches && modes && item.element.parentNode !== modes) modes.appendChild(item.element);
+      else if (!phone.matches && item.element.parentNode !== item.parent) item.parent.insertBefore(item.element, item.next && item.next.parentNode === item.parent ? item.next : null);
+    });
+  };
   arrangeQuality();
   phone.addEventListener('change', arrangeQuality);
   var root = document.documentElement;
   var bar = document.getElementById('bottom-bar');
+  var handle = document.getElementById('bottom-handle');
+  var transport = document.querySelector('#controls .transport');
+  var more;
+  if (bar && transport) {
+    more = document.createElement('button'); more.id = 'apple-controls-more'; more.className = 'ctrl-btn'; more.type = 'button';
+    more.textContent = '•••'; more.setAttribute('aria-label', '更多播放控制'); more.setAttribute('aria-expanded', 'false');
+    more.addEventListener('click', function () {
+      var expanded = bar.classList.toggle('apple-controls-expanded');
+      more.setAttribute('aria-expanded', String(expanded));
+      if (typeof holdBottomControlsVisible === 'function') holdBottomControlsVisible(6000);
+    });
+    transport.appendChild(more);
+    if (modes) {
+      var collapse = document.createElement('button'); collapse.id = 'apple-controls-collapse'; collapse.type = 'button'; collapse.className = 'ctrl-btn'; collapse.textContent = '收起';
+      collapse.setAttribute('aria-label', '收起播放控制条'); collapse.addEventListener('click', foldControls); modes.appendChild(collapse);
+    }
+  }
+  var header = document.getElementById('top-right');
+  var user = document.getElementById('user-btn');
+  if (header && user) {
+    var library = document.createElement('button'); library.id = 'apple-library-btn'; library.type = 'button'; library.textContent = '歌单';
+    library.setAttribute('aria-label', '打开歌单与播放队列');
+    library.addEventListener('click', function () {
+      if (typeof toggleFxPanel === 'function') toggleFxPanel(false);
+      if (typeof togglePlaylistPanel === 'function') togglePlaylistPanel(true);
+    });
+    header.insertBefore(library, user);
+  }
+  function unfoldControls() {
+    if (!bar) return;
+    bar.classList.remove('apple-controls-collapsed');
+    if (document.body) document.body.classList.remove('apple-controls-folded');
+    if (typeof controlsHovering !== 'undefined' && !hoverPointer.matches) controlsHovering = false;
+    if (typeof holdBottomControlsVisible === 'function') holdBottomControlsVisible(4000);
+  }
+  function foldControls() {
+    if (!bar) return;
+    if (typeof closeMiniQueue === 'function') closeMiniQueue();
+    if (typeof controlsRevealHoldUntil !== 'undefined') controlsRevealHoldUntil = 0;
+    if (typeof controlsHovering !== 'undefined') controlsHovering = false;
+    bar.classList.add('apple-controls-collapsed'); bar.classList.remove('apple-controls-expanded');
+    if (more) more.setAttribute('aria-expanded', 'false');
+    if (document.body) document.body.classList.add('apple-controls-folded');
+  }
+  var down = null, suppressClickUntil = 0;
+  if (bar) {
+    [bar, handle].filter(Boolean).forEach(function (target) {
+      target.addEventListener('mouseenter', function (event) {
+        if (!hoverPointer.matches) event.stopImmediatePropagation();
+      }, true);
+    });
+    bar.addEventListener('pointerdown', function (event) {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      var excluded = event.target.closest && event.target.closest('input, #progress-bar, .volume-popover, .quality-popover');
+      down = excluded ? null : {id: event.pointerId, x: event.clientX, y: event.clientY};
+      if (typeof holdBottomControlsVisible === 'function') holdBottomControlsVisible(6000);
+    }, {passive: true});
+    var finishedTouchEvent;
+    function finishTouch(event) {
+      if (event === finishedTouchEvent) return;
+      finishedTouchEvent = event;
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      var swipe = down && down.id === event.pointerId && event.clientY - down.y > 40 && Math.abs(event.clientX - down.x) < 40;
+      down = null;
+      if (swipe) { suppressClickUntil = Date.now() + 600; foldControls(); return; }
+      setTimeout(function () {
+        if (typeof controlsHovering !== 'undefined') controlsHovering = false;
+        if (typeof holdBottomControlsVisible === 'function') holdBottomControlsVisible(4000);
+      }, 0);
+    }
+    bar.addEventListener('pointerup', finishTouch, {passive: true});
+    window.addEventListener('pointerup', function (event) { if (down) finishTouch(event); }, {passive: true, capture: true});
+    bar.addEventListener('pointercancel', function () { down = null; if (typeof controlsHovering !== 'undefined') controlsHovering = false; });
+    bar.addEventListener('click', function (event) {
+      if (Date.now() < suppressClickUntil) { event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
+  }
+  if (handle) handle.addEventListener('click', unfoldControls, true);
   function updateViewport() {
     var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     root.style.setProperty('--apple-visible-height', Math.round(height) + 'px');

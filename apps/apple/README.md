@@ -1,6 +1,6 @@
 # Mineradio Apple development client
 
-Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.4 (12) is not a public/stable release and is not ready for final user acceptance.**
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.5 (13) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
@@ -88,3 +88,15 @@ An actual iPhone Simulator/WebKit interaction test reproduced a second panel ope
 Checks: all 26 Apple JS tests passed. Two iPhone 18 Pro / iOS 27 simulator UI tests passed: local WAV media-clock plus nonzero analyser signal, and portrait/landscape control geometry, volume-slider hit testing, and DIY panel close. The first audio run failed with a running context/advancing media clock but no signal at a fixed 700ms check; its fixture now polls for actual signal with a bounded 10-second deadline and still fails on silence. The first layout run reproduced the occluding queue; its rerun passed after gating edge-hover. Layout uses a simulator-only fixture state over the bundled original DOM/engine, not provider music or account authorization. Fixtures are absent from the Release executable.
 
 Local Release archive: `/Users/baojian/Library/Developer/Xcode/Archives/2026-10-21/Mineradio-0.4.4-12.xcarchive`. Archive succeeded; strict signature validation, version/build 0.4.4/12, AppIcon presence, bundled 105-module SHA-256 integrity and inclusion of the edge-hover fix passed. This is an Apple Development-signed local archive, not an App Store Connect upload or Apple review result. Physical devices were not operated or installed. Long-run iPad memory/restart issues and real-account provider acceptance remain open; the archive is held for further validation.
+
+## Phone HUD refinement — 0.4.5 (13)
+
+User reports: the full control bar covers too much of iPhone 14 Pro's stage, fails to fold, pause sometimes does not respond, and the mini queue does not expose playlist switching. iPad's incumbent presentation should remain.
+
+Root cause confirmed from upstream handlers: desktop `mouseenter` sets `controlsHovering=true`, while touch compatibility events do not reliably provide a matching `mouseleave`, preventing the auto-hide timer from hiding. The previous phone adapter also displayed every control at once and had removed the edge-hover route without adding an explicit full-library entry.
+
+Apple-only changes: compact primary row with original previous/play/next controls; More reveals the original secondary controls (their handlers/identities preserved and tablet order restored). A clearly labelled playlist button opens the complete original queue/playlists/podcasts panel. Landscape anchors that panel on the left, gives song names two lines, and retains internal scrolling. Manual collapse is available via a button and downward swipe; progress/range drags are excluded, swipe-generated clicks are suppressed, and the original handle restores the bar. Touch clears sticky hover and holds visible controls for four seconds after release; mouse hover and the user's auto-hide preference are preserved. Popovers are height-bounded for short landscape viewports.
+
+31 Apple JS regression tests passed, including sticky-hover release, swipe/handle restoration, progress exclusion and tablet relocation. The native layout fixture no longer forcibly keeps hidden controls visible; UI tests now exercise More, manual collapse, complete library tabs, and a separate auto-hide case. On this host the simulator test build reached signing but test execution failed to start for more than seven minutes under extreme load, so it was stopped; no build-13 simulator UI pass is claimed. Browser validation also timed out. Small/large-phone geometry, iPhone 14 Pro physical touch/rotation and actual playback pause latency therefore remain unaccepted. There was no physical installation, no device UI operation, and no TestFlight upload. This change does not claim to solve old-iPad WebContent exits or provider full-playback limitations.
+
+Build-13 local device Debug build succeeded; strict codesign validation passed. Version/build 0.4.5/13 and inclusion/integrity of the updated Apple HUD bundle were verified. No build-13 Release archive or upload is claimed.

@@ -49,7 +49,8 @@ struct OriginalPlayerView: UIViewRepresentable {
         #endif
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--apple-layout-smoke") {
-            config.userContentController.addUserScript(WKUserScript(source: AppleLayoutSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            let autoHidePrelude = ProcessInfo.processInfo.arguments.contains("--apple-controls-auto-hide-smoke") ? "window.__appleSmokeAutoHide=true;" : ""
+            config.userContentController.addUserScript(WKUserScript(source: autoHidePrelude + AppleLayoutSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
         #endif
         config.allowsInlineMediaPlayback = true
