@@ -48,8 +48,8 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Mineradio
-        CFBundleShortVersionString: '0.4.1'
-        CFBundleVersion: '9'
+        CFBundleShortVersionString: '0.4.2'
+        CFBundleVersion: '10'
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:

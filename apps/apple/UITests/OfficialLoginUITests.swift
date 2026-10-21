@@ -20,6 +20,16 @@ final class OfficialLoginUITests: XCTestCase {
         XCTAssertFalse(app.navigationBars[title].waitForExistence(timeout: 3))
         app.terminate()
     }
+    @MainActor func testLocalAudioClockAndAnalysedSignal() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--apple-audio-smoke"]
+        app.launch()
+        let button = app.buttons["播放测试音"]
+        XCTAssertTrue(button.waitForExistence(timeout: 45))
+        button.tap()
+        XCTAssertTrue(app.staticTexts["音频链路通过"].waitForExistence(timeout: 25))
+        app.terminate()
+    }
     @MainActor func testQQOfficialLoginSheetAndCancel() throws { try verifyOfficialSheet("qq", title: "QQ 音乐官方登录") }
     @MainActor func testKugouOfficialLoginSheetAndCancel() throws { try verifyOfficialSheet("kugou", title: "酷狗音乐官方登录") }
 }

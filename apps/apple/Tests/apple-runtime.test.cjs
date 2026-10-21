@@ -11,14 +11,14 @@ function fixture(extra = {}) {
   const styles = [];
   const zone = {setAttribute() {}};
   const calls = [];
-  const context = {window, renderer: {domElement: canvas}, document: {getElementById: id => id === 'splash' ? splash : zone, readyState: 'complete', body: {classList: {add() {}}}, head: {appendChild: el => styles.push(el.textContent)}, createElement: () => ({})},
+  const context = {window, renderer: {domElement: canvas}, document: {addEventListener: window.addEventListener.bind(window), getElementById: id => id === 'splash' ? splash : zone, readyState: 'complete', body: {classList: {add() {}}}, head: {appendChild: el => styles.push(el.textContent)}, createElement: () => ({})},
     MouseEvent: Mouse, MutationObserver: class {constructor(fn) {observer = fn;} observe() {} disconnect() {}},
     splashAnimating: true, splashCanvas: {width: 1000, height: 1000},
     splashGl: {deleteBuffer: () => calls.push('buffer'), deleteProgram: () => calls.push('program'), getExtension: () => ({loseContext: () => calls.push('context')})},
     splashGlBuffer: {}, splashGlProgram: {}, splashGlUniforms: {}, splashCtx: {}, splashDust: [1], splashStreaks: [1], splashShards: [1]};
   Object.assign(context, extra);
   vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-runtime.js', 'utf8'), context);
-  function pointer(type, id = 1, kind = 'touch') {const e = new Event(type, {cancelable: true}); Object.assign(e, {pointerId: id, pointerType: kind, isPrimary: true, clientX: 12, clientY: 30}); canvas.dispatchEvent(e); return e;}
+  function pointer(type, id = 1, kind = 'touch', x = 12, y = 30) {const e = new Event(type, {cancelable: true}); Object.assign(e, {pointerId: id, pointerType: kind, isPrimary: true, clientX: x, clientY: y}); canvas.dispatchEvent(e); return e;}
   return {context, canvas, window, splash, calls, pointer, styles, observe: () => observer()};
 }
 test('touch drag reaches original mouse handlers; cancel releases drag without ripple', () => {
@@ -83,4 +83,55 @@ test('Apple controls use original account anchor and leave room above playback c
   const css = fixture().styles.join('');
   assert(css.includes('var(--fullscreen-diy-top'));
   assert(css.includes('body.apple-client.diy-mode.controls-visible #fx-fab'));
+});
+
+test('a stationary finger tap sends one canvas click; drag and cancel never select', () => {
+  const f = fixture(), clicks = [];
+  f.canvas.addEventListener('click', event => clicks.push([event.clientX, event.clientY]));
+  f.pointer('pointerdown'); f.pointer('pointerup');
+  assert.deepEqual(clicks, [[12, 30]]);
+  f.pointer('pointerdown'); f.pointer('pointermove', 1, 'touch', 65, 30); f.pointer('pointerup', 1, 'touch', 65, 30);
+  f.pointer('pointerdown'); f.pointer('pointercancel');
+  assert.equal(clicks.length, 1);
+});
+test('Apple skips whole-track offline PCM analysis instead of allocating four song-length bands', async () => {
+  let decoded = 0;
+  const f = fixture({analyzeAudioBeats: async () => { decoded++; }, analyzePodcastDjBeats: async () => { decoded++; }});
+  assert.equal(await f.context.analyzeAudioBeats('fixture', 200, 1), null);
+  assert.equal(await f.context.analyzePodcastDjBeats('fixture', 1, 200), null);
+  assert.equal(decoded, 0);
+});
+test('audio playback activates native session before play and resumes interrupted analysis', async () => {
+  const calls = [];
+  class Media { play() { calls.push('play'); return Promise.resolve(); } }
+  const f = fixture({HTMLMediaElement: Media, audioCtx: {state: 'interrupted', resume: () => { calls.push('resume'); return Promise.resolve(); }}});
+  f.window.webkit = {messageHandlers: {appleAudioActivate: {postMessage: async () => {calls.push('native'); return {active:true};}}}};
+  const media = new Media(); media.tagName = 'AUDIO';
+  await media.play();
+  assert.deepEqual(calls, ['native', 'resume', 'play']);
+});
+
+test('3D picking uses CSS canvas bounds rather than screen or retina pixels', () => {
+  const samples = [];
+  class Ray { setFromCamera(vector) { samples.push([vector.x, vector.y]); } }
+  class Vector { constructor(x,y) {this.x=x;this.y=y;} }
+  const f = fixture({THREE: {Raycaster: Ray, Vector2: Vector}, camera: {}, raycasterFromPointerEvent: () => null});
+  f.canvas.getBoundingClientRect = () => ({left:20,top:40,width:300,height:500});
+  f.context.raycasterFromPointerEvent({clientX:170,clientY:290});
+  assert.deepEqual(samples, [[0,0]]);
+});
+test('WebKit audio session explicitly uses playback rather than ambient sound', () => {
+  const navigator = {audioSession: {type: 'auto'}};
+  fixture({navigator});
+  assert.equal(navigator.audioSession.type, 'playback');
+});
+
+test('first gesture primes AudioContext before any song/audio element exists', async () => {
+  let started = 0;
+  class Context { constructor() { this.state='suspended'; } resume() { started++; this.state='running'; return Promise.resolve(); } }
+  const f = fixture({audio: null, audioCtx: null, initAudio: () => false});
+  f.window.AudioContext = Context;
+  f.window.dispatchEvent(new Event('pointerdown'));
+  assert(f.context.audioCtx instanceof Context);
+  assert.equal(started,1);
 });

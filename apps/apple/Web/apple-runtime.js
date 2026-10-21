@@ -73,13 +73,67 @@
     if (typeof applyRendererPowerMode === 'function') applyRendererPowerMode();
     if (!accountSheetVisible && typeof recoverVisualsAfterBackground === 'function') recoverVisualsAfterBackground('apple-official-login');
   };
+  // Whole-track PCM decoding plus four offline bands can exceed a mobile
+  // WebContent memory budget. Retain the existing realtime analyser/rendering;
+  // full-track MR/DJ cache generation is not offered by this Apple build.
+  if (typeof analyzeAudioBeats === 'function') analyzeAudioBeats = async function () { return null; };
+  if (typeof analyzePodcastDjBeats === 'function') analyzePodcastDjBeats = async function () { return null; };
+
+  // WebKit's Web Audio ambient policy can obey the iPhone mute switch even
+  // when the native app requested playback. Use its supported playback type.
+  try {
+    if (typeof navigator !== 'undefined' && navigator.audioSession) navigator.audioSession.type = 'playback';
+  } catch (_) {}
+  function resumeAppleAnalysis() {
+    if (typeof audioCtx !== 'undefined' && audioCtx &&
+        (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') && audioCtx.resume) {
+      return audioCtx.resume();
+    }
+    return Promise.resolve();
+  }
+  // Create/resume the graph synchronously in the actual user gesture, before
+  // provider URL fetching loses WebKit's transient activation.
+  if (document.addEventListener) document.addEventListener('pointerdown', function () {
+    try {
+      // The upstream audio element is null until the first song URL resolves.
+      // Prime its future context now, while actual user activation still exists.
+      if (typeof audioCtx !== 'undefined' && !audioCtx) {
+        var Context = window.AudioContext || window.webkitAudioContext;
+        if (Context) audioCtx = new Context();
+      }
+      if (typeof initAudio === 'function') initAudio();
+      resumeAppleAnalysis().catch(function () {});
+    } catch (_) {}
+  }, {capture: true, passive: true});
+  if (typeof HTMLMediaElement !== 'undefined') {
+    var originalMediaPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      var media = this;
+      if (media.tagName === 'VIDEO') return originalMediaPlay.call(media);
+      var native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.appleAudioActivate;
+      return Promise.resolve(native ? native.postMessage({}) : null).then(function () {
+        return resumeAppleAnalysis();
+      }).then(function () { return originalMediaPlay.call(media); });
+    };
+  }
+  window.__mineradioApplePlaybackReady = true;
   var canvas = renderer.domElement;
+  if (typeof raycasterFromPointerEvent === 'function') raycasterFromPointerEvent = function (event) {
+    var rect = canvas.getBoundingClientRect();
+    var x = (event.clientX - rect.left) / Math.max(1, rect.width) * 2 - 1;
+    var y = -(event.clientY - rect.top) / Math.max(1, rect.height) * 2 + 1;
+    var ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(x, y), camera);
+    return ray;
+  };
   var activePointer = null;
+  var touchStart = null;
+  var suppressNativeClickUntil = 0;
   canvas.style.touchAction = 'none';
   function mouse(target, type, event) {
     target.dispatchEvent(new MouseEvent(type, {
       bubbles: true, cancelable: true, clientX: event.clientX, clientY: event.clientY,
-      button: 0, buttons: type === 'mouseup' ? 0 : 1
+      button: 0, buttons: type === 'mousedown' || type === 'mousemove' ? 1 : 0
     }));
   }
   canvas.addEventListener('pointerdown', function (event) {
@@ -88,25 +142,39 @@
     // Pointer lock has no equivalent for a finger. Do not enter desktop free-camera controls.
     if (typeof freeCamera !== 'undefined' && freeCamera.active) return;
     activePointer = event.pointerId;
+    touchStart = {x: event.clientX, y: event.clientY, at: Date.now(), moved: false};
     event.preventDefault();
     canvas.setPointerCapture(event.pointerId);
     mouse(canvas, 'mousedown', event);
   });
   canvas.addEventListener('pointermove', function (event) {
     if (event.pointerId !== activePointer) return;
+    if (touchStart && Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 8) touchStart.moved = true;
     event.preventDefault(); mouse(window, 'mousemove', event);
   });
   canvas.addEventListener('pointerup', function (event) {
     if (event.pointerId !== activePointer) return;
     event.preventDefault(); activePointer = null; mouse(window, 'mouseup', event);
+    suppressNativeClickUntil = Date.now() + 800;
+    var tapped = touchStart && !touchStart.moved && Date.now() - touchStart.at < 650 &&
+      Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) <= 8;
+    touchStart = null;
+    if (tapped) mouse(canvas, 'click', event);
   });
   function cancel(event) {
     if (event.pointerId !== activePointer) return;
-    activePointer = null;
+    activePointer = null; touchStart = null; suppressNativeClickUntil = Date.now() + 800;
     if (typeof orbit !== 'undefined') orbit.rotating = false;
     if (typeof particlePointerSpin !== 'undefined') particlePointerSpin.active = false;
     if (typeof idleGuidePointerUp === 'function') idleGuidePointerUp();
   }
+  canvas.addEventListener('click', function (event) {
+    // WebKit may still emit a trusted touch click despite preventDefault.
+    // Ignore that duplicate; the bridge already dispatched the tap exactly once.
+    if (event.isTrusted && (event.pointerType === 'touch' || event.pointerType === 'pen') && Date.now() < suppressNativeClickUntil) {
+      event.preventDefault(); event.stopImmediatePropagation();
+    }
+  }, true);
   canvas.addEventListener('pointercancel', cancel);
   canvas.addEventListener('lostpointercapture', cancel);
 

@@ -1,6 +1,6 @@
 # Mineradio Apple development client
 
-Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.1 (9) is not a public/stable release and is not ready for final user acceptance.**
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.2 (10) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
@@ -59,3 +59,18 @@ On 2026-10-21 the user reported successful Netease and Qishui login on the physi
 The AppIcon asset reuses `build/icon.png`, composited on black and scaled to an opaque sRGB 1024×1024 PNG; no new branding or shared desktop assets were changed. `project.yml` declares the asset catalog, AppIcon name and Release archive configuration.
 
 Open `MineradioApple.xcodeproj` from this worktree. In Xcode Organizer select archive **0.4.1 (9)**, then **Distribute App → App Store Connect** and upload for TestFlight. The App Store Connect app record must match `com.swordingk.mineradio.apple.preview` and team `NV5R86Q3MS`. The owner completes the account/encryption/tester configuration. Local archive and signature checks do not establish Apple server validation or upload success.
+
+## Follow-up playback defects — 0.4.2 (10)
+
+User reports after build 8: old iPad still sometimes restarts playback or loses WebContent; iPhone has difficult touch picking and silent playback. These are open defects, not dismissed as old hardware. Candidate 0.4.1 (9) has the MR icon and a locally successful Release archive, but TestFlight upload is held while investigating these reports.
+
+Apple-only changes in build 10:
+- Bridge one short touch tap to the existing canvas click handler, suppress duplicate native touch clicks, and never convert a drag/cancel into selection. Normalize 3D picking using the canvas CSS rectangle.
+- Prime AudioContext on the first real gesture even while the upstream audio element is still null; explicitly use WebKit playback session type; activate native AVAudioSession before media play, resume suspended/interrupted analysis, and permit asynchronous audio URL playback after a tap. Video still requires a gesture. Physical iPhone sound is unverified.
+- Skip both whole-track MR and DJ PCM/offline analysis, preserving the original realtime analyser and visual engine. This intentionally defers full-track beat-cache generation; it is not a claim that every desktop analysis feature is available. Existing source fetched and decoded complete songs, then allocated four full-length frequency bands, causing a substantial memory peak.
+
+Regression fixtures reproduce the missing click, wrong canvas geometry, absent native audio activation and whole-track analysis allocation path, then pass with the Apple adapter. A simulator-only synthetic WAV test checks native session activation, the Web Audio analyser and media clock, without accessing user accounts. Its automation result is recorded separately from physical-device acceptance. No new physical installation or interaction occurred in this follow-up. Mid-track restart and long-run crash resolution remain unaccepted.
+
+Build-10 evidence: 24 Apple JS tests passed after the latest adapter changes. An earlier 12-suite native run passed before the final JS-only audio-session/gesture additions; the latest native rerun was stopped during compilation when the host load exceeded 400. Simulator WAV verification did not pass: one fixture run failed because its test audio element was uninitialized, then the fixed-fixture run was stopped during an overloaded build. The test fixture is corrected, but no simulator audio success is claimed. iPhone audibility, mid-track restart and old-iPad stability therefore remain open.
+
+Final build-10 local device build completed successfully with one Xcode build job; strict codesign validation passed and AppIcon metadata is present. The app was not installed on a physical device in this follow-up.

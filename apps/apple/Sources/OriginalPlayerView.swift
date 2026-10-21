@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import AVFAudio
 
 struct OriginalPlayerView: UIViewRepresentable {
     let endpoint: URL
@@ -16,6 +17,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         if openAccount != nil {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAccountLogin")
         }
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
         config.setURLSchemeHandler(BundledPlayerHandler(), forURLScheme: "mineradio-app")
         if let sessionToken, let tokenJSON = try? JSONSerialization.data(withJSONObject: [sessionToken]),
            let tokenText = String(data: tokenJSON, encoding: .utf8) {
@@ -39,9 +41,16 @@ struct OriginalPlayerView: UIViewRepresentable {
             """
             config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--apple-audio-smoke") {
+            config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioProbe")
+            config.userContentController.addUserScript(WKUserScript(source: ApplePlaybackSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
+        #endif
         config.allowsInlineMediaPlayback = true
-        // Keep playback gesture-gated; do not start audio just by opening the app.
-        config.mediaTypesRequiringUserActionForPlayback = [.audio, .video]
+        // Provider URLs resolve asynchronously after a tap. Audio must remain
+        // playable after that await; video retains WebKit's gesture requirement.
+        config.mediaTypesRequiringUserActionForPlayback = [.video]
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
@@ -70,12 +79,32 @@ struct OriginalPlayerView: UIViewRepresentable {
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage,
                                    replyHandler: @escaping (Any?, String?) -> Void) {
-            guard message.name == "appleAccountLogin", message.frameInfo.isMainFrame,
-                  let url = message.frameInfo.request.url, url.scheme == "http", url.host == "127.0.0.1", url.port == parent.endpoint.port,
-                  let input = message.body as? [String: Any], let provider = input["provider"] as? String,
-                  OfficialLoginPolicy.entry(provider) != nil, let open = parent.openAccount else {
-                replyHandler(nil, "Unsupported login request"); return
+            guard message.frameInfo.isMainFrame,
+                  let url = message.frameInfo.request.url, url.scheme == "http", url.host == "127.0.0.1", url.port == parent.endpoint.port else {
+                replyHandler(nil, "Unsupported origin"); return
             }
+            #if DEBUG && targetEnvironment(simulator)
+            if message.name == "appleAudioProbe", let body = message.body as? [String: Any] {
+                let report = body.filter { ["state", "mediaTime", "signal", "error"].contains($0.key) }
+                if let bytes = try? JSONSerialization.data(withJSONObject: report),
+                   let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                    try? bytes.write(to: root.appendingPathComponent("apple-audio-probe.json"))
+                }
+                replyHandler(["recorded": true], nil); return
+            }
+            #endif
+            if message.name == "appleAudioActivate" {
+                do {
+                    let session = AVAudioSession.sharedInstance()
+                    try session.setCategory(.playback, mode: .default)
+                    try session.setActive(true)
+                    replyHandler(["active": true], nil)
+                } catch { replyHandler(nil, "音频会话启动失败：" + error.localizedDescription) }
+                return
+            }
+            guard message.name == "appleAccountLogin", let input = message.body as? [String: Any],
+                  let provider = input["provider"] as? String, OfficialLoginPolicy.entry(provider) != nil,
+                  let open = parent.openAccount else { replyHandler(nil, "Unsupported login request"); return }
             Task { @MainActor in replyHandler(await open(provider), nil) }
         }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { report(error) }
