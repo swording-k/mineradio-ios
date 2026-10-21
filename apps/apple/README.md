@@ -1,6 +1,6 @@
 # Mineradio Apple development client
 
-Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.3 (11) is not a public/stable release and is not ready for final user acceptance.**
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.4 (12) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
@@ -58,7 +58,7 @@ On 2026-10-21 the user reported successful Netease and Qishui login on the physi
 
 The AppIcon asset reuses `build/icon.png`, composited on black and scaled to an opaque sRGB 1024×1024 PNG; no new branding or shared desktop assets were changed. `project.yml` declares the asset catalog, AppIcon name and Release archive configuration.
 
-Open `MineradioApple.xcodeproj` from this worktree. In Xcode Organizer select archive **0.4.1 (9)**, then **Distribute App → App Store Connect** and upload for TestFlight. The App Store Connect app record must match `com.swordingk.mineradio.apple.preview` and team `NV5R86Q3MS`. The owner completes the account/encryption/tester configuration. Local archive and signature checks do not establish Apple server validation or upload success.
+The historical **0.4.1 (9)** archive is held and superseded; do not upload it. Open `MineradioApple.xcodeproj` from this worktree for current development. A later accepted candidate can be distributed through Xcode Organizer → Distribute App → App Store Connect. The App Store Connect app record must match `com.swordingk.mineradio.apple.preview` and team `NV5R86Q3MS`. The owner completes the account/encryption/tester configuration. Local archive and signature checks do not establish Apple server validation or upload success.
 
 ## Follow-up playback defects — 0.4.2 (10)
 
@@ -80,3 +80,11 @@ Final build-10 local device build completed successfully with one Xcode build jo
 User confirmed iPhone audio works. Root cause of shifted controls: original mobile and late desktop CSS conflict; desktop popup transforms survive on narrow screens. The Apple-only layout adapter groups portrait controls into three rows and landscape into two, restores volume/quality, uses 44px core targets, bounds panels to safe areas and adds touch close buttons. Quality and AutoMix keep their existing nodes/handlers and restore their original parents/order on tablet. Shared public/desktop sources remain unchanged.
 
 Validation: 25 Apple JS tests passed, including repeated phone/tablet relocation. Original 105-module bundle and signed Debug iphoneos build 0.4.3 (11) succeeded. Browser fixtures at 320×667, 390×844 and 844×390 checked button/popup geometry; 834×1112 checked tablet restoration. Fixtures have no live music/accounts/3D and do not establish physical Safari touch or playback stability. No physical installation/operation or TestFlight upload occurred. iPad WebContent exits/restarts remain open.
+
+## WebKit touch acceptance checks — 0.4.4 (12)
+
+An actual iPhone Simulator/WebKit interaction test reproduced a second panel opening over the DIY close button: WebKit emits compatibility mouse movement after a tap, and the desktop left-edge trigger interprets it as a request to open the queue. The Apple adapter now permits that edge trigger only for a hover-capable fine pointer. Explicit queue controls remain available, and real mouse edge-hover keeps its original function. A regression test failed before this change and passed afterward. Shared desktop/public files remain unchanged.
+
+Checks: all 26 Apple JS tests passed. Two iPhone 18 Pro / iOS 27 simulator UI tests passed: local WAV media-clock plus nonzero analyser signal, and portrait/landscape control geometry, volume-slider hit testing, and DIY panel close. The first audio run failed with a running context/advancing media clock but no signal at a fixed 700ms check; its fixture now polls for actual signal with a bounded 10-second deadline and still fails on silence. The first layout run reproduced the occluding queue; its rerun passed after gating edge-hover. Layout uses a simulator-only fixture state over the bundled original DOM/engine, not provider music or account authorization. Fixtures are absent from the Release executable.
+
+Local Release archive: `/Users/baojian/Library/Developer/Xcode/Archives/2026-10-21/Mineradio-0.4.4-12.xcarchive`. Archive succeeded; strict signature validation, version/build 0.4.4/12, AppIcon presence, bundled 105-module SHA-256 integrity and inclusion of the edge-hover fix passed. This is an Apple Development-signed local archive, not an App Store Connect upload or Apple review result. Physical devices were not operated or installed. Long-run iPad memory/restart issues and real-account provider acceptance remain open; the archive is held for further validation.

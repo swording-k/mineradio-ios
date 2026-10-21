@@ -29,3 +29,19 @@ test('rotation preserves control identity and restores original parents and orde
   assert.equal(quality.parentNode, modes); assert.equal(mix.parentNode, actions);
   assert.match(viewport.content, /viewport-fit=cover/);
 });
+
+test('touch-only input cannot activate desktop left-edge queue hover', () => {
+  let hover = false, originalCalls = 0;
+  const element = () => ({style:{setProperty() {}},dataset:{},appendChild() {},setAttribute() {},addEventListener() {}});
+  const context = {
+    document: {querySelector: () => null, createElement: element, head: element(), getElementById: () => null, documentElement: element()},
+    window: {matchMedia: query => query.includes('hover:') ? {get matches() {return hover;}} : {matches:true,addEventListener() {}},innerHeight:844,addEventListener() {}},
+    isPlaylistEdgeTrigger: () => {originalCalls++; return true;}
+  };
+  vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-layout.js','utf8'),context);
+  assert.equal(context.isPlaylistEdgeTrigger(1,200,844,null), false);
+  assert.equal(originalCalls,0);
+  hover = true;
+  assert.equal(context.isPlaylistEdgeTrigger(1,200,844,null), true);
+  assert.equal(originalCalls,1);
+});

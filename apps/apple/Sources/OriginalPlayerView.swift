@@ -47,6 +47,11 @@ struct OriginalPlayerView: UIViewRepresentable {
             config.userContentController.addUserScript(WKUserScript(source: ApplePlaybackSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
         #endif
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--apple-layout-smoke") {
+            config.userContentController.addUserScript(WKUserScript(source: AppleLayoutSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
+        #endif
         config.allowsInlineMediaPlayback = true
         // Provider URLs resolve asynchronously after a tap. Audio must remain
         // playable after that await; video retains WebKit's gesture requirement.

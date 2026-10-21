@@ -171,6 +171,15 @@
     close.setAttribute('aria-label', entry[0] === 'fx-panel' ? '关闭视觉控制台' : '关闭歌单面板');
     close.addEventListener('click', entry[1]); panel.prepend(close);
   });
+  // WebKit emits compatibility mouse movement after a finger tap. A desktop
+  // left-edge hover must not open a second panel over the user's touch target.
+  var hoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  if (typeof isPlaylistEdgeTrigger === 'function') {
+    var originalPlaylistEdgeTrigger = isPlaylistEdgeTrigger;
+    isPlaylistEdgeTrigger = function () {
+      return hoverPointer.matches && originalPlaylistEdgeTrigger.apply(this, arguments);
+    };
+  }
   var quality = document.getElementById('quality-control');
   var qualityParent = quality && quality.parentNode;
   var qualityNext = quality && quality.nextSibling;

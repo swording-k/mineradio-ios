@@ -28,13 +28,17 @@ enum ApplePlaybackSmoke {
             if (!audio) { audio = new Audio(); audio.crossOrigin = 'anonymous'; }
             phase = 'source'; audio.src = url; audio.loop = true;
             phase = 'graph'; initAudio(); phase = 'play'; await audio.play();
-            setTimeout(() => {
+            const deadline = Date.now() + 10000;
+            const check = setInterval(() => {
               const samples = new Uint8Array(analyser.fftSize); analyser.getByteTimeDomainData(samples);
               const signal = samples.some(value => Math.abs(value-128)>3);
+              const passed = audioCtx.state === 'running' && audio.currentTime > 0.05 && signal;
+              if (!passed && Date.now() < deadline) return;
+              clearInterval(check);
               report({state:audioCtx.state,mediaTime:audio.currentTime,signal});
-              status.textContent = audioCtx.state === 'running' && audio.currentTime > 0.05 && signal ? '音频链路通过' : '音频链路失败';
+              status.textContent = passed ? '音频链路通过' : '音频链路失败';
               audio.pause(); URL.revokeObjectURL(url);
-            }, 700);
+            }, 100);
           } catch(error) { report({error:phase + ':' + error.name + ':' + error.message}); status.textContent = '音频链路失败：' + error.name; }
         };
         document.body.append(button,status);
