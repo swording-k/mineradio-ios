@@ -1,6 +1,6 @@
 # Mineradio Apple development client
 
-Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.1 (8) is not a public/stable release and is not ready for final user acceptance.**
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.1 (9) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
@@ -51,3 +51,11 @@ Apple adaptation releases splash graphics after exit, avoids synchronous 105-scr
 Remaining release gates: real authorized login/library/member playback per provider; real Qishui MFA acceptance/full-playback solution; long playback/seek/rotation/background/interruption/AirPlay testing; iPhone native UI acceptance. Builds, fixtures, anonymous API checks, simulator UI and physical user acceptance are separate evidence. Do not upload installers or request final acceptance until these gates are honestly resolved or scope explicitly agreed.
 
 Original GPL-3.0-only, copyright and upstream notices remain applicable. Bundled LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md retain attribution. This is not an official upstream Apple release.
+
+## TestFlight candidate 0.4.1 (9)
+
+On 2026-10-21 the user reported successful Netease and Qishui login on the physical iPad and requested an icon and a TestFlight candidate. This verifies login only; QQ/Kugou account authorization, Qishui full-track playback and sustained resource use remain unaccepted. This explicitly authorizes internal beta preparation, not a stable public release.
+
+The AppIcon asset reuses `build/icon.png`, composited on black and scaled to an opaque sRGB 1024×1024 PNG; no new branding or shared desktop assets were changed. `project.yml` declares the asset catalog, AppIcon name and Release archive configuration.
+
+Open `MineradioApple.xcodeproj` from this worktree. In Xcode Organizer select archive **0.4.1 (9)**, then **Distribute App → App Store Connect** and upload for TestFlight. The App Store Connect app record must match `com.swordingk.mineradio.apple.preview` and team `NV5R86Q3MS`. The owner completes the account/encryption/tester configuration. Local archive and signature checks do not establish Apple server validation or upload success.

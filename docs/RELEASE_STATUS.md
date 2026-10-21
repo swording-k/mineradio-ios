@@ -9,7 +9,7 @@ current distribution and acceptance records; update this snapshot at promotion.
 | Local macOS | Installed runtime from `26fc655`; fix merged via PR #8 | Same app runtime as public community.3. Official Qishui Mac 2.9.1 dependency. Long-run/user acceptance pending; Windows/macOS code checks passed. |
 | community.3 channel | tag `v2.2.0-community.3` | User explicitly authorized public preview after the earlier hold; this is not a stable release. |
 | Public Windows | upstream `XxHuberrr/Mineradio-paused` v2.2.0 | Original upstream EXE; this community has not performed Windows native acceptance. |
-| iPad / iPhone | no public package; internal `codex/ipad-client` 0.4.1 (8) | Apple port is under development. Native platform adapters and simulator checks do not establish private-account playback or physical stability. Not ready for final acceptance. |
+| iPad / iPhone | no public package; TestFlight candidate `codex/ipad-client` 0.4.1 (9) | User confirmed Netease/Qishui login on iPad on 2026-10-21 and requested internal beta preparation. App icon/archive candidate prepared; not uploaded. QQ/Kugou account flows, Qishui full playback and long-run stability remain unaccepted. |
 
 The user initially held installers, then explicitly requested that the website
 provide the Mac build with the Qishui fix. Publish community.3 as a preview and

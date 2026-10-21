@@ -9,6 +9,7 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - path: Resources/Assets.xcassets
       - path: Web
         type: folder
         buildPhase: resources
@@ -31,6 +32,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.swordingk.mineradio.apple.preview
         PRODUCT_NAME: Mineradio
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: '5.0'
         TARGETED_DEVICE_FAMILY: '1,2'
         GENERATE_INFOPLIST_FILE: NO
@@ -47,7 +49,7 @@ targets:
       properties:
         CFBundleDisplayName: Mineradio
         CFBundleShortVersionString: '0.4.1'
-        CFBundleVersion: '8'
+        CFBundleVersion: '9'
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
@@ -84,3 +86,5 @@ schemes:
     test:
       targets:
         - MineradioAppleUITests
+    archive:
+      config: Release
