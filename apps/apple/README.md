@@ -1,67 +1,53 @@
 # Mineradio Apple development client
 
-Refs [#14](https://github.com/swording-k/Mineradio/issues/14). Universal iPad/iPhone development port; not a public release or accepted stable client.
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.0 (7) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
-The original `public/` UI and visual engine run in WKWebView. An app-owned service listens only on `127.0.0.1:19363`; no Mac server is required for the implemented Netease routes. Swift implements Netease request encryption, QR login, account status, playlist pagination, search, lyrics and playback URL lookup. Session cookies stay in Keychain. Other music platforms are not implemented in this Apple port. Provider playback URLs determine access; this client does not grant membership or bypass trial restrictions.
+The original `public/` UI and visual engine run in WKWebView. Original modules remain unchanged and are bundled in their original order; Apple postludes add touch, control anchoring, bounded lyric residency and native login invocation. A loopback service runs inside the app. No Mac server is required. Production uses stable `127.0.0.1:19363`; simulators/tests use independent ports so parallel clients do not collide.
 
-Apple builds combine the original 105 JavaScript modules in original order, avoiding the upstream loader's synchronous XHR startup. The build manifest records source hashes. Desktop source is unchanged. Audio uses a bounded streaming relay with Range support rather than buffering a whole song before replying. These changes preserve the visual presets.
+QQ/Kugou open isolated official WKWebView login windows using the original desktop entry URLs. Native cookie observation hands only matching provider cookies to the native adapter. The player receives verified status, never raw credentials. Cancel closes the window and restores rendering; covered stage rendering uses the existing sleep path. Account state is verified against remote account-scoped responses; a cookie or public profile alone is insufficient. Cookies persist in separate Keychain entries and are cleared on provider logout.
 
-## Build
+Qishui reuses the original GPL Passport signer assets in an on-demand WKWebView and forwards only explicitly allowed signed requests to native networking. The current QR channel requires **Douyin**, not the Qishui app scanner; the server's confirmation page identifies the desktop channel as Windows. QR confirmation is followed by `/luna/pc/me` identity validation before `loggedIn=true`. Old cookies must not complete a still-waiting QR generation.
 
-Requires Xcode with iOS SDK, Node.js and XcodeGen. From repository root:
+## Implemented routes and limits
+
+| Provider | Native implementation | Actual acceptance boundary |
+| --- | --- | --- |
+| Netease | QR, account, search, playlists/tracks, lyrics, playback URL | Previous physical user playback worked; new long-run stability still pending. |
+| QQ Music | Official login sheet, account validation, created/collected/liked playlists, pagination, search, lyric and authorized vkey URL | Fixtures and anonymous search/lyric passed. Private-account login and membership playback not verified. |
+| Kugou | Official login sheet, account validation, playlists/tracks, search, H5/Web/Mobile playback and lyrics | Fixtures and anonymous search passed. Private-account playback not verified; anonymous denial is preserved. |
+| Qishui | Passport QR/poll, native account verification, playlists/tracks/feed/search/lyrics and returned unencrypted playback URLs | Anonymous QR/waiting passed on host WebKit. Real authorization/MFA and private playback not verified. Mac-only `bdms.node` full-track signing is not portable to iOS. |
+
+Unknown/unsupported routes return explicit capability failures. Provider rights are preserved: no fabricated VIP, session, URL or full-track claim. Qishui MFA currently returns a visible unsupported challenge state rather than looping forever. Write actions/other desktop integrations are not declared complete.
+
+The bounded streaming relay handles Range/HEAD and forwards bytes before download completion. Provider CDN/cover boundaries and Referer are explicit; arbitrary/private hosts are rejected. This does not convert provider authorization denial into playable audio.
+
+## Build and checks
+
+Requirements: Xcode with iOS SDK/runtime, Node.js and XcodeGen. From repository root:
 
 ```sh
+node apps/apple/scripts/test-native.cjs
 node apps/apple/scripts/build-web-bundle.cjs
 xcodegen generate --spec apps/apple/project.yml
-xcodebuild -project apps/apple/MineradioApple.xcodeproj -scheme MineradioApple -sdk iphonesimulator -configuration Debug -derivedDataPath apps/apple/build CODE_SIGNING_ALLOWED=NO build
-node --test apps/apple/Tests/web-bundle.test.cjs
+xcodebuild -project apps/apple/MineradioApple.xcodeproj -scheme MineradioApple -sdk iphoneos -configuration Debug -derivedDataPath apps/apple/build-device -allowProvisioningUpdates build
 ```
 
-Generated project, bundled JS and build outputs are ignored. Device builds use Apple Development signing, not the Mac Developer ID certificate. Normal startup selects the internal service; the obsolete developer-server connection form has been removed. `--native-smoke` is an anonymous simulator probe, not user acceptance.
+The native test runner uses `xcrun swiftc`, verifies that executables are generated, runs fixtures, and cleans its temporary outputs. Do not rely on a PATH shim reporting compiler success. Live probes in `Tests/*LiveProbe.swift` are opt-in anonymous checks, never personal-account CI.
 
-## Evidence and remaining work (2026-10-19)
+UI tests use a simulator-only launch argument and real official sites; they do not scan or approve a login. The first run passed sheet/page load/cancel, but screenshots showed landing pages rather than login panels. Entry detection was then corrected to include Kugou's `div` control, wait for delayed rendering, and require the login iframe/panel. The corrected run displayed an actual Kugou QR. A subsequent QQ run also displayed a real QR in its captured screenshot; an image-label assertion failed because the official image has no matching accessibility label. That assertion is removed, and visual QR evidence remains separate from automated sheet/cancel checks and from actual account authorization.
 
-- Encryption vectors, native route fixtures, loopback access controls, bundle ordering and incremental media streaming have dedicated checks.
-- Anonymous host-network probe returned QR key, search results, lyrics and a playable URL. This does not prove real iPad playback.
-- Simulator build passed and original startup rendered. End-to-end simulator QR/search probe remains unresolved.
-- Physical iPad Air 4 ran version 0.2.0 (2), but user reports severe freezing and no usable playback. It has NOT passed acceptance.
-- A 16-second read-only Activity Monitor trace measured WebContent about 578 MiB average physical footprint; app about 121 MiB, GPU process about 148 MiB, networking about 8 MiB. The approximate process sum is 855 MiB; it is not an exact unique-memory total. Thermal state remained Nominal. No JavaScript stack profile was obtained, so these measurements do not establish a single rendering bottleneck.
-- Version 0.3.0 (3) contains the synchronous-loader and whole-audio-buffer fixes. It is not yet measured or accepted on the physical iPad. Device control stopped at the user's request; do not resume without authorization.
+Final 2026-10-21 checks: 11 native suites and Apple JS regressions passed; two simulator official-sheet/cancel tests passed; iOS device build and strict codesign verification passed. Shared desktop tests passed 222/222 and Node quick-check passed. No Windows native runtime evidence is implied.
 
-Still verify login, playlist traversal, play/pause/seek, uninterrupted long playback, frame pacing, memory, touch, rotation and iPhone layout on real hardware. Background/lock-screen playback, interruptions and AirPlay are not accepted. The Mac Qishui signature component cannot be reused on iOS.
+Generated project, resource bundles, build outputs and local account data are ignored. Device builds use Apple Development signing. No new physical iPad installation, launch or interaction is authorized by this work; user requested manual testing only and no further intermediate acceptance.
 
-Original GPL-3.0-only, copyright and upstream notices remain; see bundled LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md. This is not an official upstream Apple release.
+## Performance evidence and pending gates
 
-## 2026-10-20 follow-up: resource lifetime and touch
+A read-only iPad Air 4 record from 2026-10-20 00:19:22 identifies the app's GPU process with `highwater`, about 303.6 MiB; WebContent lifetime peak was about 1249.3 MiB. These are not simultaneous unique-memory totals or proof of every exit's cause. Raw device logs remain local.
 
-Apple-only postlude now forwards primary touch/pen drags to existing mouse-driven 3D handlers, with pointer capture and cancel cleanup. It does not intercept playlist or button events outside the scene canvas. Desktop free-camera pointer-lock mode remains unsupported for finger input.
+Apple adaptation releases splash graphics after exit, avoids synchronous 105-script loading and whole-song audio buffering, disables extra whole-song text-runway preloading, evicts distant lyric rows while preserving the visible window/lookahead, and caps the optional high-quality lyric texture pool at 24 MiB. The pool cap is not a total app-memory cap. Seeking/rebuild continuity, sustained memory, frame pacing and actual device stability remain unaccepted. Original DIY uses account-region anchors; FX controls avoid the playback bar.
 
-On splash completion, release the separate splash WebGL buffer/program/context and reduce its backing canvas to 1×1. Original code previously stopped animation but retained these resources. This is a specific lifetime fix, not evidence that all WebContent termination is solved. Version 0.3.1 (4) needs physical acceptance; no physical installation or UI automation was performed.
+Remaining release gates: real authorized login/library/member playback per provider; Qishui MFA/full-playback solution; long playback/seek/rotation/background/interruption/AirPlay testing; iPhone native UI acceptance. Builds, fixtures, anonymous API checks, simulator UI and physical user acceptance are separate evidence. Do not upload installers or request final acceptance until these gates are honestly resolved or scope explicitly agreed.
 
-Read-only device records: JetsamEvent 2026-10-19 16:09:57 lists Mineradio and related WebKit processes in coalition 837. WebContent lifetimeMax 53840 pages ×16384 bytes ≈841 MiB; GPU lifetimeMax 22128 pages ≈346 MiB. Peaks are separate lifetime maxima, not simultaneous totals. Neither process entry reports a termination reason; the record does not establish that Mineradio was the Jetsam victim. No WebContent-named crash report was returned by the recursive search. Raw system records stay local and are not committed.
-
-## DIY controls (0.3.2 development candidate)
-
-The original DIY mode toggle lived in the desktop titlebar and its alternate entry required hover/fullscreen. Apple-only CSS exposes the existing alternate toggle at the safe-area top right and keeps the visual-console entry reachable by touch. It calls original toggleDiyMode and preserves original customization controls. Normal mode still hides the visual console until DIY is enabled. Removed the native globe/server configuration form: normal playback uses the internal loopback service.
-
-## Experimental Qishui Passport adapter
-
-The original GPL Passport security assets are referenced as folder resources, not edited or duplicated. A separate on-demand WKWebView runs the existing signer; only two exact HTTPS Passport routes may cross the native XHR bridge. Redirects, arbitrary hosts/paths/methods and mismatched signing tokens are rejected. Cookies stay in a native Keychain entry, and QR generation prevents stale confirmation. Failed initialization releases its WebView.
-
-The first anonymous macOS WebKit probe successfully generated a real QR PNG and returned waiting from the polling API. This is a host-WebKit protocol check, not iOS or physical-user acceptance. Initial iOS simulator probe failed with a JavaScript exception. A diagnostic rebuild passed, but a repeat end-to-end probe was blocked by an unresponsive simulator installation/launch workflow; iOS QR is not accepted. The QR index URL legitimately uses bff-pc.qishui.com; scan URL validation accepts that exact host and api.qishui.com.
-
-The adapter intentionally returns loggedIn=false / verifying after cookie confirmation until the Apple account/catalogue adapter validates identity. Secondary verification (MFA), account/library and full-track playback are not implemented. The Mac-only native signature helper is not bundled. Other music providers remain unsupported. This login prototype must not be advertised as a working Qishui client.
-
-Eight JS adapter/bridge/bundle checks and the Swift host/signature/poll/QR contract checks pass. Actual iPad QR, confirmation, logout and long-run playback are separate outstanding gates. Debug --qishui-smoke writes only safe booleans/stages to the simulator's Documents folder; never commit QR tokens, cookies or raw network responses.
-
-## 0.3.3 (6): bounded lyric resources and original control anchors
-
-A newer read-only device record, JetsamEvent-2026-10-20-001922, identifies the GPU process in the same coalition as foreground Mineradio with reason highwater: 19430 pages ×16384 bytes ≈303.6 MiB. WebContent was the largest process; lifetime peak 79955 pages ≈1249.3 MiB. This supersedes the earlier inconclusive records for that event, but does not establish the precise allocation responsible or the cause of every reported exit. Raw device logs are not committed.
-
-Source inspection confirms whole-song text runway preloading and retention: original trimStageLyricPersistentTrackRows evicts effect layers but preserves text rows. The Apple-only adapter now disables the additional whole-song runway, retains the original visible offsets and 24-line lookahead (plus small eviction hysteresis), releases offscreen rows through disposeStageLyricResidentRow, and caps the optional high-quality lyric texture pool at 24 MiB. This bounds these caches rather than promising a total app-memory cap. Seeking may need to rebuild evicted lines and requires acceptance testing. Current visible lyric styling is preserved.
-
-DIY now follows the original fullscreen account-region CSS anchors and tracking. The FX button moves above the playback controls when visible, with larger side/bottom spacing and matching panel inset. No desktop shared files changed.
-
-Seven JS regression checks pass, including a 1000-line fixture with translated visible rows, bounded retention, disabled whole-song runway and texture-pool budget. Physical memory/FPS, seeking, button placement and long playback remain pending. No physical installation, launch or UI control was performed.
+Original GPL-3.0-only, copyright and upstream notices remain applicable. Bundled LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md retain attribution. This is not an official upstream Apple release.

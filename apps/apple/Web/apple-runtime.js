@@ -56,6 +56,23 @@
     var originalQualityBudget = lyricQualityPoolBudgetBytes;
     lyricQualityPoolBudgetBytes = function (tier) { return Math.min(24 * 1024 * 1024, originalQualityBudget(tier)); };
   }
+  // A full-screen official login covers the player. Reuse the existing sleep
+  // path so two WebViews do not render the stage and login page concurrently.
+  var accountSheetVisible = false;
+  if (typeof isDeepBackgroundMode === 'function') {
+    var originalDeepBackground = isDeepBackgroundMode;
+    isDeepBackgroundMode = function () { return accountSheetVisible || originalDeepBackground(); };
+  }
+  if (typeof isHiddenForBackgroundOptimization === 'function') {
+    var originalHiddenBackground = isHiddenForBackgroundOptimization;
+    isHiddenForBackgroundOptimization = function () { return accountSheetVisible || originalHiddenBackground(); };
+  }
+  window.__mineradioAppleSetAuthPresentation = function (visible) {
+    accountSheetVisible = !!visible;
+    if (typeof updateRenderPowerClasses === 'function') updateRenderPowerClasses();
+    if (typeof applyRendererPowerMode === 'function') applyRendererPowerMode();
+    if (!accountSheetVisible && typeof recoverVisualsAfterBackground === 'function') recoverVisualsAfterBackground('apple-official-login');
+  };
   var canvas = renderer.domElement;
   var activePointer = null;
   canvas.style.touchAction = 'none';

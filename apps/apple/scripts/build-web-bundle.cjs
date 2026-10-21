@@ -16,7 +16,8 @@ function buildWebBundle(publicDir, outputDir, adapterPath) {
     const source = fs.readFileSync(path.join(publicDir, relative), 'utf8');
     return { path: relative, source, sha256: crypto.createHash('sha256').update(source).digest('hex') };
   });
-  const adapter = adapterPath ? fs.readFileSync(adapterPath, 'utf8') : '';
+  const adapterPaths = adapterPath ? (Array.isArray(adapterPath) ? adapterPath : [adapterPath]) : [];
+  const adapter = adapterPaths.map(file => fs.readFileSync(file, 'utf8')).join('\n');
   const bundle = modules.map(item => item.source).join('\n') + (adapter ? '\n' + adapter : '');
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(path.join(outputDir, 'index-modules.js'), bundle);
@@ -32,6 +33,6 @@ function buildWebBundle(publicDir, outputDir, adapterPath) {
 module.exports = { buildWebBundle };
 if (require.main === module) {
   const root = path.resolve(__dirname, '../../..');
-  const result = buildWebBundle(path.join(root, 'public'), path.resolve(__dirname, '../GeneratedWeb'), path.resolve(__dirname, '../Web/apple-runtime.js'));
+  const result = buildWebBundle(path.join(root, 'public'), path.resolve(__dirname, '../GeneratedWeb'), [path.resolve(__dirname, '../Web/apple-runtime.js'), path.resolve(__dirname, '../Web/apple-login.js')]);
   process.stdout.write(`Apple web bundle: ${result.moduleCount} original modules, ${result.bytes} bytes\n`);
 }

@@ -3,7 +3,7 @@ import Foundation
 @main struct LoopbackServiceTests {
     @MainActor static func main() async throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("public")
-        let service = AppleLocalService(resourceRoot: root, generatedRoot: URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("apps/apple/GeneratedWeb"))
+        let service = AppleLocalService(resourceRoot: root, generatedRoot: URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("apps/apple/GeneratedWeb"), port: 0)
         service.start()
         for _ in 0..<100 {
             if service.origin != nil || service.failure != nil { break }

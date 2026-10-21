@@ -3,6 +3,9 @@ import Foundation
 /// Ported from the repository's GPL-3.0-only Passport bridge. Login capability
 /// is separate from catalogue, membership and full-track playback capability.
 enum QishuiAuthContract {
+    static func mayValidateAccount(_ status: [String: Any]) -> Bool {
+        status["cookieReady"] as? Bool == true && status["status"] as? String == "verifying"
+    }
     static func scanURL(_ index: String) -> URL? {
         guard let source = URLComponents(string: index), source.scheme == "https",
               ["api.qishui.com", "bff-pc.qishui.com"].contains(source.host ?? ""),

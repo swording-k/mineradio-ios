@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlayerHost: View {
     @StateObject private var service = AppleLocalService()
+    @StateObject private var officialLogin = OfficialAccountLogin()
     @State private var endpoint: URL?
     @State private var failure: String?
     @State private var revision = UUID()
@@ -10,7 +11,9 @@ struct PlayerHost: View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
             if let endpoint {
-                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken).id(revision)
+                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken, accountPresented: officialLogin.ticket != nil, openAccount: { provider in
+                    await officialLogin.open(provider) { platform, cookies in try await service.importAccount(platform, cookies: cookies) }
+                }).id(revision)
                     .ignoresSafeArea(edges: .bottom)
 
                 if let failure {
@@ -29,8 +32,20 @@ struct PlayerHost: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: Binding(get: { officialLogin.ticket != nil }, set: { if !$0 { officialLogin.cancel() } })) {
+            OfficialAccountLoginSheet(login: officialLogin)
+        }
         .onAppear {
             service.start()
+            #if DEBUG && targetEnvironment(simulator)
+            if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--apple-official-login-smoke"),
+               ProcessInfo.processInfo.arguments.indices.contains(index + 1) {
+                let provider = ProcessInfo.processInfo.arguments[index + 1]
+                Task { @MainActor in
+                    _ = await officialLogin.open(provider) { platform, cookies in try await service.importAccount(platform, cookies: cookies) }
+                }
+            }
+            #endif
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--qishui-smoke") {
                 Task { @MainActor in

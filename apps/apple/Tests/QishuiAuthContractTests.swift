@@ -17,6 +17,9 @@ import Foundation
         precondition(QishuiAuthContract.scanURL("https://api.qishui.com/passport/qr?token=fixture") != nil)
         precondition(QishuiAuthContract.scanURL("https://evil.test/scan?token=fixture") == nil)
         precondition(QishuiAuthContract.scanURL("https://bff-pc.qishui.com/scan") == nil)
+        precondition(!QishuiAuthContract.mayValidateAccount(["cookieReady": true, "status": "waiting"]))
+        precondition(!QishuiAuthContract.mayValidateAccount(["cookieReady": false, "status": "verifying"]))
+        precondition(QishuiAuthContract.mayValidateAccount(["cookieReady": true, "status": "verifying"]))
         print("Qishui auth: exact host/path/method, signed token binding, no fabricated account login, MFA/limit states passed")
     }
 }

@@ -45,6 +45,8 @@ import Security
         }
     }
     private var cookieReady: Bool { ["sessionid", "sessionid_ss", "sid_guard", "sid_tt"].contains { !(cookies[$0] ?? "").isEmpty } }
+    // Native adapter handoff only; never sent to either player or signer JavaScript.
+    func sessionSnapshot() -> [String: String] { cookies }
     func status() -> [String: Any] {
         ["provider": "qishui", "loggedIn": false, "cookieReady": cookieReady, "configured": true,
          "status": cookieReady ? "verifying" : "not_connected", "membershipKnown": false,
@@ -76,13 +78,17 @@ import Security
         guard expected == generation, token == activeToken else { throw Failure.replaced }
         return QishuiAuthContract.poll(result["data"] as? [String: Any] ?? [:], cookieReady: cookieReady)
     }
-    func logout() async throws -> [String: Any] {
+    func releaseSigningEnvironment() {
         generation += 1; activeToken = ""; initialized = false
         initializing?.cancel(); initializing = nil
         jobs.values.forEach { $0.cancel() }; jobs.removeAll()
         webView?.stopLoading(); webView?.configuration.userContentController.removeScriptMessageHandler(forName: "qishuiRequest")
         webView?.navigationDelegate = nil; webView = nil
-        cookies = [:]; msToken = ""; browserInfo = ""
+        msToken = ""; browserInfo = ""
+    }
+    func logout() async throws -> [String: Any] {
+        releaseSigningEnvironment()
+        cookies = [:]
         let code = SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: cookieService, kSecAttrAccount as String: "session"] as CFDictionary)
         guard code == errSecSuccess || code == errSecItemNotFound else { throw Failure.keychain }
         return status()

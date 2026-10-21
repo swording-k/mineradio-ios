@@ -12,19 +12,62 @@ import UniformTypeIdentifiers
     private var listener: NWListener?
     private let api = NeteaseNativeAPI()
     private let media = NeteaseMediaStream()
+    private let qq = QQMusicNativeAPI()
+    private let kugou = KugouNativeAPI()
+    private let qishuiCatalog = QishuiCatalogAPI()
     private lazy var qishui = QishuiAuthRuntime(bridge: Bundle.main.resourceURL?.appendingPathComponent("Web/qishui-xhr-bridge.js"))
     private let resourceRoot: URL?
     private let generatedRoot: URL?
     private var active: [UUID: NWConnection] = [:]
     private var jobs: [UUID: Task<Void, Never>] = [:]
-    private let port: UInt16 = 19363
+    private var port: UInt16
 
     init(resourceRoot: URL? = Bundle.main.resourceURL?.appendingPathComponent("public"),
-         generatedRoot: URL? = Bundle.main.resourceURL?.appendingPathComponent("GeneratedWeb")) {
+         generatedRoot: URL? = Bundle.main.resourceURL?.appendingPathComponent("GeneratedWeb"), port: UInt16? = nil) {
+        #if targetEnvironment(simulator)
+        self.port = port ?? 0
+        #else
+        self.port = port ?? 19363
+        #endif
         self.resourceRoot = resourceRoot
         self.generatedRoot = generatedRoot
     }
 
+    func importAccount(_ provider: String, cookies: [HTTPCookie]) async throws -> [String: Any] {
+        switch provider {
+        case "qq": return try await qq.setSession(cookies)
+        case "kugou":
+            try await kugou.setSession(cookies)
+            return try await kugou.handle(URL(string: "http://127.0.0.1:\(port)/api/kugou/login/status")!, method: "GET", body: Data())
+        default: return ["loggedIn": false, "message": "此平台不使用官方网页会话导入。"]
+        }
+    }
+    private func qishuiAPI(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
+        switch url.path {
+        case "/api/qishui/login/qrcode": return try await qishui.createQrCode()
+        case "/api/qishui/login/check":
+            let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value ?? ""
+            var status = try await qishui.checkQrCode(token)
+            if QishuiAuthContract.mayValidateAccount(status) {
+                await qishuiCatalog.setSession(qishui.sessionSnapshot())
+                let verified = await qishuiCatalog.validateAccount()
+                if verified["loggedIn"] as? Bool == true {
+                    status.merge(verified) { _, new in new }; status["status"] = "confirmed"
+                    qishui.releaseSigningEnvironment()
+                } else if verified["reauthRequired"] as? Bool == true {
+                    status["status"] = "reauth_required"; status["reauthRequired"] = true
+                }
+            }
+            if status["status"] as? String == "mfa_required" { qishui.releaseSigningEnvironment() }
+            return status
+        case "/api/qishui/logout":
+            _ = try await qishui.logout(); await qishuiCatalog.setSession([:])
+            return ["ok": true, "provider": "qishui", "loggedIn": false]
+        default:
+            await qishuiCatalog.setSession(qishui.sessionSnapshot())
+            return try await qishuiCatalog.handle(url, method: method, body: body)
+        }
+    }
     func start() {
         guard listener == nil else { return }
         do {
@@ -35,7 +78,9 @@ import UniformTypeIdentifiers
             listener.stateUpdateHandler = { [weak self] state in
                 Task { @MainActor in
                     guard let self else { return }
-                    if case .ready = state { self.origin = URL(string: "http://127.0.0.1:\(self.port)") }
+                    if case .ready = state, let port = self.listener?.port?.rawValue {
+                        self.port = port; self.origin = URL(string: "http://127.0.0.1:\(port)")
+                    }
                     if case .failed = state { self.failure = "无法启动设备内的音乐服务，请退出 App 后重试。" }
                 }
             }
@@ -106,14 +151,14 @@ import UniformTypeIdentifiers
         do {
             if url.path == "/api/audio" || url.path == "/api/cover" {
                 let text = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "url" }?.value ?? ""
-                guard var target = URL(string: text), NeteaseContract.allowedMedia(target) else {
+                guard var target = URL(string: text), AppleMediaPolicy.allowed(target) else {
                     send(connection, status: 403, type: "application/json", data: Data("{\"error\":\"MEDIA_HOST_NOT_ALLOWED\"}".utf8)); return
                 }
                 // Upgrade CDN HTTP links before leaving the device.
                 if target.scheme == "http" { var c = URLComponents(url: target, resolvingAgainstBaseURL: false)!; c.scheme = "https"; if c.port == 80 { c.port = nil }; target = c.url! }
                 var request = URLRequest(url: target, timeoutInterval: 20)
                 request.httpMethod = method
-                request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
+                request.setValue(AppleMediaPolicy.referer(target), forHTTPHeaderField: "Referer")
                 if let range = headers["range"] { request.setValue(range, forHTTPHeaderField: "Range") }
                 // If the client disconnects or the source fails after headers,
                 // close the stream rather than append a second HTTP response.
@@ -126,15 +171,10 @@ import UniformTypeIdentifiers
                     send(connection, status: 403, type: "application/json", data: Data("{\"error\":\"LOCAL_SESSION_REQUIRED\"}".utf8)); return
                 }
                 let result: [String: Any]
-                switch url.path {
-                case "/api/qishui/login/qrcode" where method == "GET": result = try await qishui.createQrCode()
-                case "/api/qishui/login/check" where method == "GET":
-                    let token = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value ?? ""
-                    result = try await qishui.checkQrCode(token)
-                case "/api/qishui/status", "/api/qishui/login/status": result = qishui.status()
-                case "/api/qishui/logout" where method == "GET" || method == "POST": result = try await qishui.logout()
-                default: result = try await api.handle(url, method: method, body: body)
-                }
+                if url.path.hasPrefix("/api/qq/") { result = try await qq.handle(url, method: method, body: body) }
+                else if url.path.hasPrefix("/api/kugou/") { result = try await kugou.handle(url, method: method, body: body) }
+                else if url.path.hasPrefix("/api/qishui/") { result = try await qishuiAPI(url, method: method, body: body) }
+                else { result = try await api.handle(url, method: method, body: body) }
                 send(connection, status: 200, type: "application/json", data: try JSONSerialization.data(withJSONObject: result))
             } else {
                 guard method == "GET", let root = resourceRoot else { throw URLError(.fileDoesNotExist) }

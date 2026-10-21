@@ -28,8 +28,9 @@ private actor Receipt {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [FixtureProtocol.self]
         let stream = NeteaseMediaStream(configuration: config, chunkSize: 2)
+        for address in ["https://m7.music.126.net/fixture.mp3", "https://isure.stream.qqmusic.qq.com/fixture.m4a", "https://imge.kugou.com/fixture.mp3", "https://audio.douyincdn.com/fixture.mp3"] {
         let receipt = Receipt()
-        try await stream.transfer(URLRequest(url: URL(string: "https://m7.music.126.net/fixture.mp3")!)) { data in
+        try await stream.transfer(URLRequest(url: URL(string: address)!)) { data in
             await receipt.append(data)
         }
         let packets = await receipt.snapshot()
@@ -40,6 +41,7 @@ private actor Receipt {
         precondition(packets[1].1 == Data([1, 2]))
         precondition(packets[2].1 == Data([3, 4]))
         precondition(packets[2].0 - packets[1].0 > 0.2, "First audio bytes were held until EOF")
+        }
         print("Media stream: header and first bytes forwarded before source completion, Range preserved")
     }
 }

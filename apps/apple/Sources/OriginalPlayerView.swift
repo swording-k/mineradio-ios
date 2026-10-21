@@ -5,18 +5,26 @@ struct OriginalPlayerView: UIViewRepresentable {
     let endpoint: URL
     @Binding var failure: String?
     var sessionToken: String? = nil
+    var accountPresented = false
+    var openAccount: ((String) async -> [String: Any])? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        if openAccount != nil {
+            config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAccountLogin")
+        }
         config.setURLSchemeHandler(BundledPlayerHandler(), forURLScheme: "mineradio-app")
         if let sessionToken, let tokenJSON = try? JSONSerialization.data(withJSONObject: [sessionToken]),
            let tokenText = String(data: tokenJSON, encoding: .utf8) {
+            let targetOrigin = "\(endpoint.scheme ?? "")://\(endpoint.host ?? "")" + (endpoint.port.map { ":\($0)" } ?? "")
+            let originData = try! JSONSerialization.data(withJSONObject: [targetOrigin])
+            let originText = String(decoding: originData, as: UTF8.self)
             let script = """
             (() => {
-              if (location.origin !== 'http://127.0.0.1:19363') return;
+              if (location.origin !== \(originText)[0]) return;
               const token = \(tokenText)[0], originalFetch = window.fetch.bind(window);
               window.fetch = (input, init) => {
                 const request = new Request(input, init), url = new URL(request.url);
@@ -45,16 +53,36 @@ struct OriginalPlayerView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) { context.coordinator.parent = self }
+    func updateUIView(_ view: WKWebView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.updateAccountPresentation(view)
+    }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply {
         var parent: OriginalPlayerView
+        private var presentedState: Bool?
         init(_ parent: OriginalPlayerView) { self.parent = parent }
+        func updateAccountPresentation(_ view: WKWebView, force: Bool = false) {
+            guard force || presentedState != parent.accountPresented else { return }
+            presentedState = parent.accountPresented
+            view.evaluateJavaScript("window.__mineradioAppleSetAuthPresentation && window.__mineradioAppleSetAuthPresentation(\(parent.accountPresented ? "true" : "false"))", completionHandler: nil)
+        }
 
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage,
+                                   replyHandler: @escaping (Any?, String?) -> Void) {
+            guard message.name == "appleAccountLogin", message.frameInfo.isMainFrame,
+                  let url = message.frameInfo.request.url, url.scheme == "http", url.host == "127.0.0.1", url.port == parent.endpoint.port,
+                  let input = message.body as? [String: Any], let provider = input["provider"] as? String,
+                  OfficialLoginPolicy.entry(provider) != nil, let open = parent.openAccount else {
+                replyHandler(nil, "Unsupported login request"); return
+            }
+            Task { @MainActor in replyHandler(await open(provider), nil) }
+        }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.failure = nil
+            updateAccountPresentation(webView, force: true)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--native-smoke"), webView.url?.host == "127.0.0.1" {
                 webView.callAsyncJavaScript("""

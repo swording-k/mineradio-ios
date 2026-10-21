@@ -12,7 +12,7 @@ actor NeteaseMediaStream {
     }
 
     func transfer(_ input: URLRequest, write: @Sendable (Data) async throws -> Void) async throws {
-        guard inFlight < 4, let url = input.url, NeteaseContract.allowedMedia(url) else { throw URLError(.resourceUnavailable) }
+        guard inFlight < 4, let url = input.url, AppleMediaPolicy.allowed(url) else { throw URLError(.resourceUnavailable) }
         inFlight += 1
         defer { inFlight -= 1 }
         let config = configuration.copy() as! URLSessionConfiguration
@@ -24,7 +24,7 @@ actor NeteaseMediaStream {
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, let finalURL = http.url,
-              NeteaseContract.allowedMedia(finalURL), [200, 206].contains(http.statusCode) else { throw URLError(.badServerResponse) }
+              AppleMediaPolicy.allowed(finalURL), [200, 206].contains(http.statusCode) else { throw URLError(.badServerResponse) }
         let chunked = response.expectedContentLength < 0
         var header = "HTTP/1.1 \(http.statusCode) Response\r\nContent-Type: \(response.mimeType ?? "application/octet-stream")\r\nConnection: close\r\nCache-Control: no-store\r\nAccept-Ranges: bytes\r\n"
         if chunked { header += "Transfer-Encoding: chunked\r\n" }
@@ -56,6 +56,6 @@ actor NeteaseMediaStream {
 private final class MediaRedirectGuard: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(request.url?.scheme == "https" && request.url.map(NeteaseContract.allowedMedia) == true ? request : nil)
+        completionHandler(request.url?.scheme == "https" && request.url.map(AppleMediaPolicy.allowed) == true ? request : nil)
     }
 }
