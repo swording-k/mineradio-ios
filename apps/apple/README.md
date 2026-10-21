@@ -1,6 +1,6 @@
 # Mineradio Apple development client
 
-Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.2 (10) is not a public/stable release and is not ready for final user acceptance.**
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.3 (11) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
@@ -74,3 +74,9 @@ Regression fixtures reproduce the missing click, wrong canvas geometry, absent n
 Build-10 evidence: 24 Apple JS tests passed after the latest adapter changes. An earlier 12-suite native run passed before the final JS-only audio-session/gesture additions; the latest native rerun was stopped during compilation when the host load exceeded 400. Simulator WAV verification did not pass: one fixture run failed because its test audio element was uninitialized, then the fixed-fixture run was stopped during an overloaded build. The test fixture is corrected, but no simulator audio success is claimed. iPhone audibility, mid-track restart and old-iPad stability therefore remain open.
 
 Final build-10 local device build completed successfully with one Xcode build job; strict codesign validation passed and AppIcon metadata is present. The app was not installed on a physical device in this follow-up.
+
+## iPhone layout follow-up — 0.4.3 (11)
+
+User confirmed iPhone audio works. Root cause of shifted controls: original mobile and late desktop CSS conflict; desktop popup transforms survive on narrow screens. The Apple-only layout adapter groups portrait controls into three rows and landscape into two, restores volume/quality, uses 44px core targets, bounds panels to safe areas and adds touch close buttons. Quality and AutoMix keep their existing nodes/handlers and restore their original parents/order on tablet. Shared public/desktop sources remain unchanged.
+
+Validation: 25 Apple JS tests passed, including repeated phone/tablet relocation. Original 105-module bundle and signed Debug iphoneos build 0.4.3 (11) succeeded. Browser fixtures at 320×667, 390×844 and 844×390 checked button/popup geometry; 834×1112 checked tablet restoration. Fixtures have no live music/accounts/3D and do not establish physical Safari touch or playback stability. No physical installation/operation or TestFlight upload occurred. iPad WebContent exits/restarts remain open.
