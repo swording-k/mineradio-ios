@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Combine
+import WebKit
 import UniformTypeIdentifiers
 
 /// App-owned loopback service. Never listens on the LAN or sends account cookies
@@ -15,7 +16,13 @@ import UniformTypeIdentifiers
     private let qq = QQMusicNativeAPI()
     private let kugou = KugouNativeAPI()
     private let qishuiCatalog = QishuiCatalogAPI()
-    private lazy var qishui = QishuiAuthRuntime(bridge: Bundle.main.resourceURL?.appendingPathComponent("Web/qishui-xhr-bridge.js"))
+    @Published private(set) var securityWebView: WKWebView?
+    private lazy var qishui: QishuiAuthRuntime = {
+        let runtime = QishuiAuthRuntime(bridge: Bundle.main.resourceURL?.appendingPathComponent("Web/qishui-xhr-bridge.js"))
+        runtime.presentSecurity = { [weak self] web in self?.securityWebView = web }
+        return runtime
+    }()
+    func cancelSecurity() { qishui.cancelSecurity() }
     private let resourceRoot: URL?
     private let generatedRoot: URL?
     private var active: [UUID: NWConnection] = [:]

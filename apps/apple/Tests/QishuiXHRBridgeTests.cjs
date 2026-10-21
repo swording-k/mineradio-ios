@@ -33,3 +33,22 @@ test('abort suppresses late native reply and synchronous requests are rejected',
   xhr.open('GET', 'https://api.qishui.com/passport/web/get_qrcode/'); xhr.onload = () => {loaded = true;}; xhr.send(); xhr.abort();
   window.__qishuiNativeComplete(messages[0].id, {status: 200, body: '{}'}); assert.equal(loaded, false);
 });
+test('security transport is limited to the active challenge and exact official Passport hosts', async () => {
+  const {window, messages} = fixture();
+  const endpoint = 'https://api.qishui.com/passport/safe/pack_verify_ways_data/?aid=386088';
+  const before = new window.XMLHttpRequest(); before.open('POST', endpoint); before.send('fixture=1');
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(messages.length, 0);
+  window.__qishuiSecurityActive = true;
+  for (const host of ['api.qishui.com', 'verify.zijieapi.com', 'auth.zijieapi.com']) {
+    const xhr = new window.XMLHttpRequest(); xhr.open('POST', `https://${host}/passport/safe/fixture/`); xhr.send('fixture=1');
+    const message = messages.at(-1); assert.equal(new URL(message.url).host, host);
+    window.__qishuiNativeComplete(message.id, {status: 200, body: '{}'});
+  }
+  for (const url of ['https://api.qishui.com.evil.test/passport/safe/a/', 'https://api.qishui.com/private', 'https://api.qishui.com/passport/../private', 'http://verify.zijieapi.com/passport/a/', 'https://user@verify.zijieapi.com/passport/a/']) {
+    const xhr = new window.XMLHttpRequest(); xhr.open('POST', url); xhr.send();
+  }
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(messages.length, 3);
+  window.__qishuiSecurityActive = false;
+  const after = new window.XMLHttpRequest(); after.open('POST', endpoint); after.send();
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(messages.length, 3);
+});

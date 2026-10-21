@@ -22,7 +22,9 @@
     send(body = null) {
       const url = new URL(this.url, location.href);
       const methods = {'/passport/web/get_qrcode/': 'GET', '/passport/web/check_qrconnect/': 'POST'};
-      if (url.protocol !== 'https:' || url.hostname !== 'api.qishui.com' || methods[url.pathname] !== this.method || url.username || url.password || url.port && url.port !== '443') {
+      const qr = url.hostname === 'api.qishui.com' && methods[url.pathname] === this.method;
+      const security = window.__qishuiSecurityActive === true && ['api.qishui.com', 'verify.zijieapi.com', 'auth.zijieapi.com'].includes(url.hostname) && url.pathname.startsWith('/passport/') && ['GET', 'POST'].includes(this.method);
+      if (url.protocol !== 'https:' || !(qr || security) || url.username || url.password || url.hash || url.port && url.port !== '443') {
         queueMicrotask(() => this._fail('error')); return;
       }
       if (pending.size >= 4) {queueMicrotask(() => this._fail('error')); return;}

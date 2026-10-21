@@ -23,6 +23,13 @@ enum QishuiAuthContract {
         return (path == "/passport/web/get_qrcode/" && method == "GET") ||
                (path == "/passport/web/check_qrconnect/" && method == "POST")
     }
+    static func allowedSecurityRequest(_ url: URL, method: String) -> Bool {
+        guard url.scheme == "https", ["api.qishui.com", "verify.zijieapi.com", "auth.zijieapi.com"].contains(url.host ?? ""),
+              url.user == nil, url.password == nil, url.port == nil || url.port == 443,
+              url.fragment == nil, ["GET", "POST"].contains(method) else { return false }
+        let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path ?? ""
+        return path.hasPrefix("/passport/") && !path.split(separator: "/").contains("..")
+    }
     static func validSignedURL(_ url: URL, token: String) -> Bool {
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let signatures = q.filter { $0.name == "a_bogus" }
@@ -44,6 +51,6 @@ enum QishuiAuthContract {
         }
         return ["provider": "qishui", "loggedIn": false, "status": status, "errorCode": code,
                 "error_code": code, "cookieReady": cookieReady, "retryAfterMs": code == 7 ? 60000 : 4500,
-                "message": code == 2046 ? "汽水账号需要二次安全验证；Apple 验证页面尚未接通。" : (status == "verifying" ? "扫码已确认，Apple 账号与曲库验证尚未完成。" : "")]
+                "message": code == 2046 ? "汽水账号需要完成二次安全验证。" : (status == "verifying" ? "扫码已确认，Apple 账号与曲库验证尚未完成。" : "")]
     }
 }

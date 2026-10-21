@@ -1,6 +1,6 @@
 # Mineradio Apple development client
 
-Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.0 (7) is not a public/stable release and is not ready for final user acceptance.**
+Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and #16. **Internal build 0.4.1 (8) is not a public/stable release and is not ready for final user acceptance.**
 
 ## Architecture
 
@@ -17,9 +17,9 @@ Qishui reuses the original GPL Passport signer assets in an on-demand WKWebView 
 | Netease | QR, account, search, playlists/tracks, lyrics, playback URL | Previous physical user playback worked; new long-run stability still pending. |
 | QQ Music | Official login sheet, account validation, created/collected/liked playlists, pagination, search, lyric and authorized vkey URL | Fixtures and anonymous search/lyric passed. Private-account login and membership playback not verified. |
 | Kugou | Official login sheet, account validation, playlists/tracks, search, H5/Web/Mobile playback and lyrics | Fixtures and anonymous search passed. Private-account playback not verified; anonymous denial is preserved. |
-| Qishui | Passport QR/poll, native account verification, playlists/tracks/feed/search/lyrics and returned unencrypted playback URLs | Anonymous QR/waiting passed on host WebKit. Real authorization/MFA and private playback not verified. Mac-only `bdms.node` full-track signing is not portable to iOS. |
+| Qishui | Passport QR/poll, native account verification, playlists/tracks/feed/search/lyrics and returned unencrypted playback URLs | Anonymous QR/waiting passed on host WebKit. Official second-verification presentation/resend is integrated; real authorization/MFA and private playback not verified. Mac-only `bdms.node` full-track signing is not portable to iOS. |
 
-Unknown/unsupported routes return explicit capability failures. Provider rights are preserved: no fabricated VIP, session, URL or full-track claim. Qishui MFA currently returns a visible unsupported challenge state rather than looping forever. Write actions/other desktop integrations are not declared complete.
+Unknown/unsupported routes return explicit capability failures. Provider rights are preserved: no fabricated VIP, session, URL or full-track claim. Qishui MFA reuses the unchanged desktop official security component in a native full-screen sheet, with cancellation, a two-minute deadline and one resend after successful verification. Native challenge networking is allowed only while the challenge is active, for exact official Passport hosts. This integration has fixture/build coverage; a real account challenge has not been accepted. Write actions/other desktop integrations are not declared complete.
 
 The bounded streaming relay handles Range/HEAD and forwards bytes before download completion. Provider CDN/cover boundaries and Referer are explicit; arbitrary/private hosts are rejected. This does not convert provider authorization denial into playable audio.
 
@@ -38,7 +38,7 @@ The native test runner uses `xcrun swiftc`, verifies that executables are genera
 
 UI tests use a simulator-only launch argument and real official sites; they do not scan or approve a login. The first run passed sheet/page load/cancel, but screenshots showed landing pages rather than login panels. Entry detection was then corrected to include Kugou's `div` control, wait for delayed rendering, and require the login iframe/panel. The corrected run displayed an actual Kugou QR. A subsequent QQ run also displayed a real QR in its captured screenshot; an image-label assertion failed because the official image has no matching accessibility label. That assertion is removed, and visual QR evidence remains separate from automated sheet/cancel checks and from actual account authorization.
 
-Final 2026-10-21 checks: 11 native suites and Apple JS regressions passed; two simulator official-sheet/cancel tests passed; iOS device build and strict codesign verification passed. Shared desktop tests passed 222/222 and Node quick-check passed. No Windows native runtime evidence is implied.
+Final 2026-10-21 checks: 12 native suites and Apple JS regressions passed; two simulator official-sheet/cancel tests passed; iOS device build and strict codesign verification passed. Shared desktop tests passed 222/222 and Node quick-check passed. No Windows native runtime evidence is implied.
 
 Generated project, resource bundles, build outputs and local account data are ignored. Device builds use Apple Development signing. No new physical iPad installation, launch or interaction is authorized by this work; user requested manual testing only and no further intermediate acceptance.
 
@@ -48,6 +48,6 @@ A read-only iPad Air 4 record from 2026-10-20 00:19:22 identifies the app's GPU 
 
 Apple adaptation releases splash graphics after exit, avoids synchronous 105-script loading and whole-song audio buffering, disables extra whole-song text-runway preloading, evicts distant lyric rows while preserving the visible window/lookahead, and caps the optional high-quality lyric texture pool at 24 MiB. The pool cap is not a total app-memory cap. Seeking/rebuild continuity, sustained memory, frame pacing and actual device stability remain unaccepted. Original DIY uses account-region anchors; FX controls avoid the playback bar.
 
-Remaining release gates: real authorized login/library/member playback per provider; Qishui MFA/full-playback solution; long playback/seek/rotation/background/interruption/AirPlay testing; iPhone native UI acceptance. Builds, fixtures, anonymous API checks, simulator UI and physical user acceptance are separate evidence. Do not upload installers or request final acceptance until these gates are honestly resolved or scope explicitly agreed.
+Remaining release gates: real authorized login/library/member playback per provider; real Qishui MFA acceptance/full-playback solution; long playback/seek/rotation/background/interruption/AirPlay testing; iPhone native UI acceptance. Builds, fixtures, anonymous API checks, simulator UI and physical user acceptance are separate evidence. Do not upload installers or request final acceptance until these gates are honestly resolved or scope explicitly agreed.
 
 Original GPL-3.0-only, copyright and upstream notices remain applicable. Bundled LICENSE, NOTICE.md and THIRD_PARTY_NOTICES.md retain attribution. This is not an official upstream Apple release.

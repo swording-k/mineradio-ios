@@ -11,7 +11,7 @@ struct PlayerHost: View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
             if let endpoint {
-                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken, accountPresented: officialLogin.ticket != nil, openAccount: { provider in
+                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken, accountPresented: officialLogin.ticket != nil || service.securityWebView != nil, openAccount: { provider in
                     await officialLogin.open(provider) { platform, cookies in try await service.importAccount(platform, cookies: cookies) }
                 }).id(revision)
                     .ignoresSafeArea(edges: .bottom)
@@ -34,6 +34,9 @@ struct PlayerHost: View {
         }
         .fullScreenCover(isPresented: Binding(get: { officialLogin.ticket != nil }, set: { if !$0 { officialLogin.cancel() } })) {
             OfficialAccountLoginSheet(login: officialLogin)
+        }
+        .fullScreenCover(isPresented: Binding(get: { service.securityWebView != nil }, set: { if !$0 { service.cancelSecurity() } })) {
+            QishuiSecuritySheet(web: service.securityWebView, cancel: { service.cancelSecurity() })
         }
         .onAppear {
             service.start()

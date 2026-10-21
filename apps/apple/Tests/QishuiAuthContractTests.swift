@@ -20,6 +20,12 @@ import Foundation
         precondition(!QishuiAuthContract.mayValidateAccount(["cookieReady": true, "status": "waiting"]))
         precondition(!QishuiAuthContract.mayValidateAccount(["cookieReady": false, "status": "verifying"]))
         precondition(QishuiAuthContract.mayValidateAccount(["cookieReady": true, "status": "verifying"]))
+        precondition(QishuiAuthContract.allowedSecurityRequest(URL(string: "https://api.qishui.com/passport/safe/pack_verify_ways_data/?aid=386088")!, method: "POST"))
+        precondition(QishuiAuthContract.allowedSecurityRequest(URL(string: "https://verify.zijieapi.com/passport/test/")!, method: "GET"))
+        for bad in ["http://api.qishui.com/passport/test/", "https://api.qishui.com.evil.test/passport/test/", "https://api.qishui.com/private", "https://user@api.qishui.com/passport/test/", "https://auth.zijieapi.com:444/passport/test/"] {
+            precondition(!QishuiAuthContract.allowedSecurityRequest(URL(string: bad)!, method: "POST"))
+        }
+        precondition(!QishuiAuthContract.allowedSecurityRequest(URL(string: "https://api.qishui.com/passport/test/")!, method: "DELETE"))
         print("Qishui auth: exact host/path/method, signed token binding, no fabricated account login, MFA/limit states passed")
     }
 }

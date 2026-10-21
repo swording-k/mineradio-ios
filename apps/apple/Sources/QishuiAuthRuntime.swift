@@ -13,6 +13,9 @@ import Security
     private let assets: URL
     private let bridge: URL
     private var webView: WKWebView?
+    var presentSecurity: ((WKWebView?) -> Void)?
+    private var securityActive = false
+    private var pollActive = false
     private var initialized = false
     private var initializing: Task<Void, Error>?
     private var navigationFailure = false
@@ -74,11 +77,52 @@ import Security
     func checkQrCode(_ token: String) async throws -> [String: Any] {
         guard !token.isEmpty, token == activeToken else { return ["provider": "qishui", "loggedIn": false, "status": "expired", "errorCode": 2] }
         let expected = generation
-        let result = try await request("POST", path: "/passport/web/check_qrconnect/", body: ["need_logo": "false", "need_short_url": "false", "is_frontier": "true", "token": token, "is_new_login": "1", "next": "https://api.qishui.com"])
+        guard !pollActive else { return ["provider": "qishui", "loggedIn": false, "status": "waiting", "retryAfterMs": 4500] }
+        pollActive = true
+        defer { pollActive = false }
+        let body = ["need_logo": "false", "need_short_url": "false", "is_frontier": "true", "token": token, "is_new_login": "1", "next": "https://api.qishui.com"]
+        let result = try await QishuiSecurityFlow.run(poll: { retry in
+            guard expected == self.generation else { throw Failure.replaced }
+            return try await self.request("POST", path: "/passport/web/check_qrconnect/",
+                params: retry == nil ? [:] : ["isResend": "true"],
+                body: body.merging(retry ?? [:]) { _, new in new })
+        }, verify: { decision in
+            guard expected == self.generation else { throw Failure.replaced }
+            do {
+                let verified = try await self.verifySecurity(decision)
+                if !verified { self.releaseSigningEnvironment() }
+                return verified
+            } catch { self.releaseSigningEnvironment(); throw error }
+        })
         guard expected == generation, token == activeToken else { throw Failure.replaced }
         return QishuiAuthContract.poll(result["data"] as? [String: Any] ?? [:], cookieReady: cookieReady)
     }
+    private func verifySecurity(_ raw: [String: Any]) async throws -> Bool {
+        guard let web = webView, presentSecurity != nil else { throw Failure.securityRuntime }
+        var decision = raw
+        let id = identity()
+        if decision["verify_portrait_id"] == nil { decision["verify_portrait_id"] = id["portrait"] }
+        securityActive = true
+        _ = try await web.evaluateJavaScript("window.__qishuiSecurityActive = true")
+        presentSecurity?(web)
+        defer {
+            securityActive = false
+            presentSecurity?(nil)
+            Task { @MainActor [weak web] in _ = try? await web?.evaluateJavaScript("window.__qishuiSecurityActive = false") }
+        }
+        let options: [String: Any] = ["generalParams": ["device_id": id["deviceId"]!, "install_id": id["installId"]!,
+            "did": id["deviceId"]!, "iid": id["installId"]!, "device_platform": "PC", "version_code": "3.5.2"]]
+        let result = try await web.callAsyncJavaScript("return await window.__qishuiAppleSecondVerify(decision, options)",
+            arguments: ["decision": decision, "options": options], in: nil, contentWorld: .page) as? [String: Any]
+        return result?["status"] as? Bool == true
+    }
+    func cancelSecurity() {
+        Task { @MainActor [weak self] in
+            _ = try? await self?.webView?.evaluateJavaScript("if (window.__qishuiAppleCancel) window.__qishuiAppleCancel(); else window.__qishuiCancelSecondVerify()")
+        }
+    }
     func releaseSigningEnvironment() {
+        presentSecurity?(nil); securityActive = false
         generation += 1; activeToken = ""; initialized = false
         initializing?.cancel(); initializing = nil
         jobs.values.forEach { $0.cancel() }; jobs.removeAll()
@@ -194,8 +238,10 @@ import Security
             diagnostics["tokenMatches"] = c.queryItems?.first { $0.name == "msToken" }?.value == msToken
         }
         guard let raw = payload["url"] as? String, raw.utf8.count < 32768, let url = URL(string: raw),
-              let method = payload["method"] as? String, QishuiAuthContract.allowedRequest(url, method: method),
-              QishuiAuthContract.validSignedURL(url, token: msToken) else { throw Failure.requestDenied }
+              let method = payload["method"] as? String,
+              (QishuiAuthContract.allowedRequest(url, method: method)
+                ? QishuiAuthContract.validSignedURL(url, token: msToken)
+                : securityActive && QishuiAuthContract.allowedSecurityRequest(url, method: method)) else { throw Failure.requestDenied }
         diagnostics["phase"] = "native-forward"
         var request = URLRequest(url: url); request.httpMethod = method
         let headers = payload["headers"] as? [String: String] ?? [:]
@@ -204,7 +250,9 @@ import Security
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.setValue(webView?.customUserAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue(cookies.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "; "), forHTTPHeaderField: "Cookie")
+        if url.host == "api.qishui.com" {
+            request.setValue(cookies.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "; "), forHTTPHeaderField: "Cookie")
+        }
         if let body = payload["body"] as? String { guard body.utf8.count < 32768 else { throw Failure.requestDenied }; request.httpBody = Data(body.utf8) }
         let (bytes, response) = try await requestSession.data(for: request)
         guard expected == generation, bytes.count < 1024 * 1024, let http = response as? HTTPURLResponse,
@@ -237,7 +285,10 @@ import Security
         } else if update != errSecSuccess { throw Failure.keychain }
     }
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        decisionHandler(action.request.url?.scheme == "qishui-auth" && action.request.url?.host == "security" ? .allow : .cancel)
+        let url = action.request.url
+        let local = url?.scheme == "qishui-auth" && url?.host == "security"
+        let challenge = securityActive && url.map { ["about:blank", "about:srcdoc"].contains($0.absoluteString) || QishuiAuthContract.allowedSecurityRequest($0, method: action.request.httpMethod ?? "GET") } == true
+        decisionHandler(local || challenge ? .allow : .cancel)
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { navigationFailure = true }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { navigationFailure = true }
@@ -279,11 +330,13 @@ private final class QishuiAssetHandler: NSObject, WKURLSchemeHandler {
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         do {
             guard let url = task.request.url, url.host == "security", url.query == nil,
-                  ["/security_host.html", "/react.js", "/react-dom.js", "/sdk-glue.js", "/bdms.js", "/qishui-xhr-bridge.js"].contains(url.path) else { throw URLError(.noPermissionsToReadFile) }
-            var data = try Data(contentsOf: url.path == "/qishui-xhr-bridge.js" ? bridge : assets.appendingPathComponent(String(url.path.dropFirst())))
+                  ["/security_host.html", "/react.js", "/react-dom.js", "/sdk-glue.js", "/bdms.js", "/qishui-xhr-bridge.js", "/qishui-security-flow.js"].contains(url.path) else { throw URLError(.noPermissionsToReadFile) }
+            let source = url.path == "/qishui-xhr-bridge.js" ? bridge :
+                (url.path == "/qishui-security-flow.js" ? bridge.deletingLastPathComponent().appendingPathComponent("qishui-security-flow.js") : assets.appendingPathComponent(String(url.path.dropFirst())))
+            var data = try Data(contentsOf: source)
             if url.path == "/security_host.html" {
                 var html = String(decoding: data, as: UTF8.self)
-                html = html.replacingOccurrences(of: "<head>", with: "<head><script src=\"qishui-xhr-bridge.js\"></script>")
+                html = html.replacingOccurrences(of: "<head>", with: "<head><script src=\"qishui-xhr-bridge.js\"></script><script src=\"qishui-security-flow.js\"></script>")
                 html = html.replacingOccurrences(of: "<script src=\"sdk-glue.js\"></script>", with: "<script src=\"sdk-glue.js\"></script><script src=\"bdms.js\"></script>")
                 data = Data(html.utf8)
             }

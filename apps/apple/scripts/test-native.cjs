@@ -14,10 +14,11 @@ const suites = [
   ['QQMusicNativeTests', ['QQMusicNativeAPI']],
   ['KugouNativeTests', ['KugouContract','KugouTransport','KugouNativeAPI']],
   ['QishuiAuthContractTests', ['QishuiAuthContract']],
+  ['QishuiSecurityFlowTests', ['QishuiSecurityFlow']],
   ['QishuiCatalogTests', ['QishuiCatalogContract','QishuiCatalogAPI']],
   ['AppleMediaPolicyTests', providers],
   ['MediaStreamTests', [...providers,'NeteaseMediaStream']],
-  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract'])]],
+  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow'])]],
 ];
 function run(command, args) {
   const result = spawnSync(command, args, {cwd: root, stdio: 'inherit'});
