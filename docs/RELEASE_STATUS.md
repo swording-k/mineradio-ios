@@ -43,3 +43,7 @@ results and published version determine when a playback/window issue can close.
 
 - [#10 resilient video playback](https://github.com/swording-k/Mineradio/issues/10):
   native video fallback, cache versions and clearer product/download information.
+
+## 2026-10-22 owner-reported beta submission and iPad regression
+
+The owner reports submitting 0.4.6 (14) for TestFlight beta review; App Store Connect status/upload was not independently verified here. The earlier local hold is an engineering readiness judgment, not a claim that no owner submission occurred. Severe iPad lag, repeated playback restart and WebContent exit remain OPEN. Read-only historical Jetsam evidence confirms prior same-coalition GPU highwater termination and large WebContent residency; it predates build 14 and must not be presented as its current crash proof. See [Apple performance diagnosis](APPLE_PERFORMANCE_DIAGNOSIS.md). No code or physical-device interaction occurred in this diagnostic follow-up.
