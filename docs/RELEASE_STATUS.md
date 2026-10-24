@@ -1,6 +1,6 @@
 # Release status
 
-Snapshot: 2026-10-18. GitHub Release assets/tags and linked Issue evidence are the
+Snapshot: 2026-10-24 for Apple development; public Mac distribution evidence below was last verified 2026-10-18. GitHub Release assets/tags and linked Issue evidence are the
 current distribution and acceptance records; update this snapshot at promotion.
 
 | Channel | Source / package | Status |
@@ -9,7 +9,7 @@ current distribution and acceptance records; update this snapshot at promotion.
 | Local macOS | Installed runtime from `26fc655`; fix merged via PR #8 | Same app runtime as public community.3. Official Qishui Mac 2.9.1 dependency. Long-run/user acceptance pending; Windows/macOS code checks passed. |
 | community.3 channel | tag `v2.2.0-community.3` | User explicitly authorized public preview after the earlier hold; this is not a stable release. |
 | Public Windows | upstream `XxHuberrr/Mineradio-paused` v2.2.0 | Original upstream EXE; this community has not performed Windows native acceptance. |
-| iPad / iPhone | no public package; development `codex/ipad-client` 0.4.6 (14); local archive 0.4.4 (12) held | User confirmed Netease/Qishui login on iPad on 2026-10-21 and requested internal beta preparation. Icon/archive prepared but not uploaded. User subsequently confirmed iPhone sound works. Builds 11–12 had two passing simulator WebKit tests. Build 13 added compact controls. Build 14 fixes phone panel dismissal, HUD reveal and pinch; 36 JS tests passed; the simulator auto-hide/restore and final pinch/rotation/panel flows passed in separate recorded runs (details in apps/apple/README.md); signed device Debug build 0.4.6/14 and bundle integrity passed; physical orientation/touch acceptance and iPad restart/WebContent exits keep TestFlight upload on hold. QQ/Kugou account flows, Qishui full playback and long-run stability remain unaccepted. |
+| iPad / iPhone | Owner reports TestFlight approval for 0.4.6 (15); later source is local on `codex/ipad-client` | Approved archive preserved; Apple server status not independently inspected. Unreleased provider/action, startup, audio-worker and diagnostic changes pass 39 JS checks, 19 native suites, device Debug/signature/module integrity, and simulator interaction/audio checks. Account writes, broader parity and sustained physical iPad stability remain open; no replacement upload. |
 
 The user initially held installers, then explicitly requested that the website
 provide the Mac build with the Qishui fix. Publish community.3 as a preview and
@@ -51,3 +51,7 @@ The owner reports submitting 0.4.6 (14) for TestFlight beta review; App Store Co
 ## 2026-10-24 owner-reported TestFlight approval and feature parity work
 
 The owner reports TestFlight approval after resubmitting build 15; this Apple server status was not independently inspected. The submitted archive is preserved. Subsequent local unreleased source adds 17 NetEase API contracts for library actions, albums/artists, comments and podcasts; 36 Apple JS tests, 13 native suites, an anonymous real-network read probe and a signed device Debug build passed. This does not establish authenticated writes, full desktop parity or physical-device stability. No install, upload or public download replacement occurred. See [Apple feature parity](APPLE_FEATURE_PARITY.md) for the corrected upstream Spotify removal finding and remaining platform gaps. Issues #14/#15 remain open.
+
+Further unreleased work adds QQ detail/comments, Kugou recommendations/library actions, Qishui collections/comments, bounded private diagnostics and deferred external font loading. 39 JS checks, 19 native suites, device Debug build/signature/module integrity and three simulator interaction/audio cases passed; account writes, real provider playback and old-iPad sustained performance remain unaccepted. The richer reference Mac DMG points to a separate development repository, not paused upstream. No new archive/upload/public package was produced; local build number 15 does not imply these changes are in the approved TestFlight binary. See the feature-parity record and quality plan for exact scope.
+
+Additional device-size check: both native phone interaction cases also passed on a fresh iPhone 14 Pro / iOS 27 Simulator (`quality-iphone14pro-20261024.xcresult`), covering portrait/landscape controls, native scene pinch, DIY/library dismissal and HUD hide/reveal. This is simulator geometry/interaction evidence, not the owner's physical iPhone or sustained rendering acceptance. Audio-worker replay passed with no runtime warning in its xcresult summary; 39 JS tests and all 19 native suites passed. Source work is saved as `c12bb7c` (provider features) and `1adce64` (UI blocking/diagnostics); no public release was changed.
