@@ -1,6 +1,7 @@
 import Foundation
 
 enum QishuiCatalogContract {
+    static let writePaths: Set<String> = ["/luna/pc/me/collection/media", "/luna/pc/me/collection/media/delete", "/luna/pc/me/collection/playlist", "/luna/pc/me/collection/playlist/delete", "/luna/pc/me/collection/album", "/luna/pc/me/collection/album/delete", "/luna/pc/me/playlist/media/append", "/luna/pc/comments/create"]
     static func text(_ value: Any?) -> String {
         if let value = value as? String { return value.trimmingCharacters(in: .whitespacesAndNewlines) }
         if let value = value as? NSNumber { return value.stringValue }
@@ -12,7 +13,7 @@ enum QishuiCatalogContract {
     static func allowedAPI(_ url: URL) -> Bool {
         guard url.scheme == "https", url.user == nil, url.password == nil, url.fragment == nil, url.port == nil || url.port == 443 else { return false }
         if url.host == "api.qishui.com" {
-            return Set(["/luna/pc/me", "/luna/pc/user/playlist", "/luna/pc/me/collection/mixed", "/luna/pc/me/recently-played-media", "/luna/pc/playlist/detail", "/luna/pc/search/track", "/luna/feed/song-tab", "/luna/pc/feed/song-tab", "/luna/pc/track_v2"]).contains(url.path)
+            return writePaths.contains(url.path) || Set(["/luna/pc/me", "/luna/pc/user/playlist", "/luna/pc/me/collection/mixed", "/luna/pc/me/recently-played-media", "/luna/pc/playlist/detail", "/luna/pc/search/track", "/luna/feed/song-tab", "/luna/pc/feed/song-tab", "/luna/pc/track_v2", "/luna/pc/comments"]).contains(url.path)
         }
         if url.host == "api-vehicle.volcengine.com" { return ["/v2/search/type", "/v2/custom/contents"].contains(url.path) }
         return url.host == "beta-luna.douyin.com" && url.path == "/luna/h5/seo_track"
@@ -23,7 +24,8 @@ enum QishuiCatalogContract {
         return ["douyincdn.com", "douyinvod.com", "bytecdn.cn", "bytecdn.com", "byteimg.com", "ibytedtos.com", "pstatp.com", "amemv.com", "volces.com"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
     static func check(_ json: [String: Any]) throws {
-        let code = (json["status_code"] as? NSNumber)?.intValue ?? (json["error_code"] as? NSNumber)?.intValue ?? 0
+        guard let raw = json["status_code"] ?? json["error_code"] else { return }
+        guard let code = Int(text(raw)) else { throw QishuiCatalogFailure.invalidResponse }
         if code == 1000016 || code == 401 { throw QishuiCatalogFailure.sessionExpired }
         if code != 0 { throw QishuiCatalogFailure.invalidResponse }
     }
@@ -34,6 +36,15 @@ enum QishuiCatalogContract {
          "error": error, "message": expired ? "汽水登录状态已失效，请重新扫码。" : (error.isEmpty ? "请先扫码连接汽水音乐。" : error)]
     }
     static func unsupported() -> [String: Any] { ["provider": "qishui", "ok": false, "supported": false, "code": 501, "error": "APPLE_CAPABILITY_NOT_IMPLEMENTED", "message": "此汽水功能尚未完成 Apple 端适配。"] }
+    static func comment(_ raw: [String: Any]) -> [String: Any] {
+        let row = firstDictionary(raw["comment"], raw["comment_info"], raw["commentInfo"], raw)
+        let user = firstDictionary(row["user"], row["user_info"], row["userInfo"], row["author"], raw["user"], raw["author"])
+        func pick(_ keys: [String], _ source: [String: Any]) -> String { keys.map { text(source[$0]) }.first { !$0.isEmpty } ?? "" }
+        let time = Double(pick(["create_time", "createTime", "created_at", "createdAt", "time"], row)) ?? 0
+        return ["id": pick(["id", "comment_id", "commentId"], row), "content": pick(["text", "content", "comment_text", "commentText"], row), "likedCount": Double(pick(["like_count", "likeCount", "digg_count", "diggCount", "liked_count"], row)) ?? 0,
+                "time": time > 0 && time < 10000000000 ? time * 1000 : time,
+                "user": ["id": pick(["id", "user_id", "userId", "uid"], user), "nickname": pick(["nickname", "nick_name", "nickName", "name"], user), "avatar": image(user["avatar_url"], user["avatarUrl"], user["avatar"], user["medium_avatar_url"], user["larger_avatar_url"])]]
+    }
     static func image(_ values: Any?...) -> String {
         func read(_ value: Any?, _ depth: Int) -> String {
             if depth > 4 { return "" }

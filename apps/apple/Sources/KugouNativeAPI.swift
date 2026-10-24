@@ -35,7 +35,7 @@ actor KugouNativeAPI {
         }
         let uid = cookies["userid"] ?? cookies["UserId"] ?? cookies["KugooID"] ?? cookies["kugouID"] ?? compound["KugooID"] ?? compound["userid"] ?? ""
         let token = cookies["token"] ?? cookies["Token"] ?? compound["t"] ?? compound["token"] ?? ""
-        let clean = uid.allSatisfy(\.isNumber) && uid != "0" ? uid : ""
+        let clean = uid.utf8.allSatisfy({ (48...57).contains($0) }) && (Int64(uid) ?? 0) > 0 ? uid : ""
         return (clean, token, cookies["kg_mid"] ?? cookies["KG_MID"] ?? KugouContract.md5("mineradio-kugou:" + (clean.isEmpty ? (token.isEmpty ? "guest" : token) : clean)), cookies["kg_dfid"] ?? cookies["KG_DFID"] ?? "-", compound["NickName"] ?? cookies["NickName"] ?? "")
     }
     private func h5Params(_ extra: [String: String] = [:]) -> [String: String] {
@@ -43,7 +43,7 @@ actor KugouNativeAPI {
         return ["srcappid": "2919", "clientver": "20000", "clienttime": now, "mid": a.mid.isEmpty ? guestMid : a.mid,
                 "uuid": now, "dfid": a.dfid, "appid": "1014", "token": a.token, "userid": a.uid.isEmpty ? "0" : a.uid].merging(extra) { _, new in new }
     }
-    private func request(_ host: String, _ path: String, params: [String: String], body: Data? = nil, router: String? = nil, timeout: TimeInterval = 12) async throws -> [String: Any] {
+    private func request(_ host: String, _ path: String, params: [String: String], body: Data? = nil, router: String? = nil, timeout: TimeInterval = 12, headers: [String: String] = [:]) async throws -> [String: Any] {
         var url = URLComponents(string: "https://" + host + path)!
         url.queryItems = params.keys.sorted().map { URLQueryItem(name: $0, value: params[$0]) }
         guard let target = url.url, KugouContract.allowedAPI(target) else { throw KugouFailure.requestDenied }
@@ -57,12 +57,30 @@ actor KugouNativeAPI {
         request.setValue(session.keys.sorted().map { "\($0)=\(session[$0]!)" }.joined(separator: "; "), forHTTPHeaderField: "Cookie")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let router { request.setValue(router, forHTTPHeaderField: "x-router") }
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await transport.request(request)
     }
-    private func gateway(_ path: String, body: [String: Any]) async throws -> [String: Any] {
+    private func recommendations(limit: Int) async throws -> [String: Any] {
+        guard (try await status())["loggedIn"] as? Bool == true else { return ["provider": "kugou", "loggedIn": false, "songs": [], "error": "KUGOU_AUTH_REQUIRED"] }
+        let a = auth, salt = "OIlwieks28dk2k092lksi2UIkp", milliseconds = Int(Date().timeIntervalSince1970 * 1000)
+        let payload: [String: Any] = ["appid": 1005, "clientver": 20489, "clienttime": milliseconds, "area_code": 1, "data": [["fmid": "0", "fmtype": 2, "offset": -1, "size": limit, "singername": ""]], "get_tracker": 1, "key": KugouContract.md5("100520489\(milliseconds)" + salt), "mid": a.mid, "uid": Int64(a.uid)!]
+        let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+        let seconds = String(milliseconds / 1000)
+        var params = ["appid": "1005", "clientver": "20489", "clienttime": seconds, "dfid": a.dfid, "mid": a.mid, "uuid": "-", "token": a.token, "userid": a.uid]
+        params["signature"] = KugouContract.md5(salt + params.keys.sorted().map { "\($0)=\(params[$0]!)" }.joined() + String(decoding: body, as: UTF8.self) + salt)
+        let json = try await request("gateway.kugou.com", "/v1/app_song_list_offset", params: params, body: body, router: "fm.service.kugou.com", headers: ["User-Agent": "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi", "dfid": a.dfid, "mid": a.mid, "clienttime": seconds, "kg-rc": "1", "kg-thash": "5d816a0", "kg-rec": "1", "kg-rf": "B9EDA08A64250DEFFBCADDEE00F8F25F"])
+        guard KugouContract.number(json["status"]) == 1 else { throw KugouFailure.invalidResponse }
+        let data = json["data"] as? [String: Any] ?? [:]
+        let rows = ["info", "song_list", "songs", "list", "songlist"].compactMap { data[$0] as? [[String: Any]] }.first
+            ?? json["info"] as? [[String: Any]] ?? json["list"] as? [[String: Any]]
+        guard let rows else { throw KugouFailure.invalidResponse }
+        let songs = rows.prefix(100).map(KugouContract.song).filter { !KugouContract.text($0["name"]).isEmpty && !KugouContract.text($0["id"]).isEmpty }
+        return ["provider": "kugou", "loggedIn": true, "songs": Array(songs.prefix(limit)), "updatedAt": milliseconds]
+    }
+    private func gateway(_ path: String, body: [String: Any], extra: [String: String] = [:]) async throws -> [String: Any] {
         guard !auth.uid.isEmpty, !auth.token.isEmpty else { throw KugouFailure.invalidInput }
         let bytes = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys, .withoutEscapingSlashes])
-        var params = h5Params(["plat": "1"])
+        var params = h5Params(["plat": "1"].merging(extra) { _, value in value })
         params["signature"] = KugouContract.signature(params, body: String(decoding: bytes, as: UTF8.self))
         return try await request("gateway.kugou.com", path, params: params, body: bytes, router: "cloudlist.service.kugou.com")
     }
@@ -124,12 +142,125 @@ actor KugouNativeAPI {
         guard generation == expected || url.path == "/api/kugou/logout" else { throw KugouFailure.sessionChanged }
         return result
     }
+    private func listID(_ raw: String) throws -> String {
+        var id = raw
+        if id.hasPrefix("collection_") {
+            let parts = id.split(separator: "_")
+            if parts.count >= 5 { id = String(parts[3]) }
+        }
+        guard let value = Int64(id), value > 0, id.allSatisfy(\.isNumber) else { throw KugouFailure.invalidInput }
+        return String(value)
+    }
+    private func favoriteList() throws -> String {
+        let lists = cachedLists ?? []
+        func matches(_ item: [String: Any], _ regex: String) -> Bool {
+            let name = KugouContract.text(KugouContract.first(item, ["name", "listname", "specialname"]))
+            return name.range(of: regex, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+        let favorite = lists.first { matches($0, "我喜欢|liked music|my favorites?") }
+            ?? lists.first { matches($0, "我喜欢|我的收藏|favorite|liked") }
+            ?? lists.first { KugouContract.number($0["is_default"] ?? $0["default"]) == 1 }
+        guard let favorite else { throw KugouFailure.invalidResponse }
+        return try listID(KugouContract.text(KugouContract.first(favorite, ["list_create_listid", "listid", "list_id", "global_collection_id", "id"])))
+    }
+    /// Read a finite number of cloud-list pages, newest first. Missing results
+    /// in a partial scan remain unknown rather than incorrectly unliked.
+    private func favoriteMatches(_ hashes: Set<String>, list: String) async throws -> (rows: [String: [String: Any]], complete: Bool) {
+        let epoch = generation, a = auth
+        func page(_ number: Int) async throws -> (rows: [[String: Any]], total: Int) {
+            let json = try await gateway("/v4/get_list_all_file", body: ["listid": Int64(list)!, "userid": Int64(a.uid)!, "token": a.token, "page": number, "pagesize": 50, "area_code": 1, "show_relate_goods": 0, "allplatform": 1, "show_cover": 1, "type": 0])
+            guard generation == epoch else { throw KugouFailure.sessionChanged }
+            let data = json["data"] as? [String: Any] ?? [:]
+            let rows = ["info", "songs", "lists", "file"].compactMap { data[$0] as? [[String: Any]] }.first
+                ?? (data["info"] as? [String: Any])?["file"] as? [[String: Any]]
+            guard KugouContract.number(json["status"]) == 1, let rows else { throw KugouFailure.invalidResponse }
+            return (rows, Int(min(1000000, max(0, KugouContract.number(data["count"] ?? data["total"])))))
+        }
+        let first = try await page(1), pages = max(1, (max(first.total, first.rows.count) + 49) / 50)
+        var found: [String: [String: Any]] = [:], visited = 0
+        // Page one is a count probe; reuse it when reached rather than fetching twice.
+        for index in stride(from: pages, through: max(1, pages - 11), by: -1) {
+            let result = index == 1 ? first : try await page(index)
+            visited += 1
+            for row in result.rows {
+                let hash = KugouContract.text(KugouContract.first(row, ["hash", "FileHash", "fileHash"])).lowercased()
+                if hashes.contains(hash) { found[hash] = row }
+            }
+            if found.count == hashes.count { return (found, true) }
+        }
+        return (found, visited == pages)
+    }
+    private func library(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
+        let check = url.path.hasSuffix("/check")
+        guard method == (check ? "GET" : "POST") else { throw KugouFailure.invalidInput }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func q(_ key: String) -> String { items.first { $0.name == key }?.value ?? "" }
+        func validHash(_ hash: String) -> Bool { hash.count == 32 && hash.allSatisfy(\.isHexDigit) }
+        var song: [String: Any] = [:], like = true, explicitList = "", hashes: Set<String> = []
+        if check {
+            let raw = q("hashes").isEmpty ? q("hash") : q("hashes")
+            guard raw.count <= 1700 else { throw KugouFailure.invalidInput }
+            hashes = Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
+            guard hashes.count <= 50, hashes.allSatisfy(validHash) else { throw KugouFailure.invalidInput }
+            if hashes.isEmpty { return ["provider": "kugou", "liked": [:], "complete": true] }
+        } else {
+            guard body.count <= 65536, let input = try JSONSerialization.jsonObject(with: body) as? [String: Any] else { throw KugouFailure.invalidInput }
+            song = input["song"] as? [String: Any] ?? input
+            let hash = KugouContract.text(KugouContract.first(song, ["hash", "fileHash", "id"])).lowercased()
+            guard validHash(hash) else { throw KugouFailure.invalidInput }
+            song["hash"] = hash; hashes = [hash]
+            if let value = input["like"] {
+                guard let flag = value as? NSNumber, CFGetTypeID(flag) == CFBooleanGetTypeID() else { throw KugouFailure.invalidInput }
+                like = flag.boolValue
+            }
+            if url.path.hasSuffix("/add-song") { explicitList = try listID(KugouContract.text(input["pid"] ?? q("pid"))) }
+        }
+        guard (try await status())["loggedIn"] as? Bool == true else { return ["provider": "kugou", "success": false, "liked": [:], "error": "KUGOU_AUTH_REQUIRED"] }
+        let list = try explicitList.isEmpty ? favoriteList() : explicitList
+        if check {
+            let matches = try await favoriteMatches(hashes, list: list)
+            var liked = Dictionary(uniqueKeysWithValues: matches.rows.keys.map { ($0, true) })
+            if matches.complete { for hash in hashes where liked[hash] == nil { liked[hash] = false } }
+            var result: [String: Any] = ["provider": "kugou", "liked": liked, "listId": list, "complete": matches.complete, "partial": !matches.complete]
+            if !matches.complete { result["error"] = "KUGOU_LIKE_SCAN_LIMIT" }
+            return result
+        }
+        let epoch = generation, a = auth
+        var payload: [String: Any] = ["userid": Int64(a.uid)!, "token": a.token, "listid": Int64(list)!, "list_ver": 0, "type": 0]
+        let path: String
+        var extra: [String: String] = [:]
+        if like || !explicitList.isEmpty {
+            let duration = KugouContract.number(song["duration"])
+            guard duration.isFinite, duration >= 0, duration <= 86400000 else { throw KugouFailure.invalidInput }
+            payload["slow_upload"] = 1; payload["scene"] = "false;null"
+            payload["data"] = [["number": 1, "name": String(KugouContract.text(song["name"] ?? song["title"]).prefix(1000)), "hash": song["hash"]!, "size": 0, "sort": 0, "timelen": Int((duration > 1000 ? duration : duration * 1000).rounded()), "bitrate": 0, "album_id": Int64(KugouContract.text(song["albumId"] ?? song["album_id"])) ?? 0, "mixsongid": Int64(KugouContract.text(KugouContract.first(song, ["albumAudioId", "album_audio_id", "mixsongid", "MixSongID"]))) ?? 0]]
+            path = "/v6/add_song"
+            extra = ["last_time": String(Int(Date().timeIntervalSince1970)), "last_area": "gztx", "userid": a.uid, "token": a.token]
+        } else {
+            let matches = try await favoriteMatches(hashes, list: list)
+            guard generation == epoch else { throw KugouFailure.sessionChanged }
+            guard let row = matches.rows[KugouContract.text(song["hash"])], let file = Int64(KugouContract.text(row["fileid"] ?? row["file_id"])), file > 0 else {
+                return ["provider": "kugou", "success": false, "error": matches.complete ? "KUGOU_SONG_NOT_IN_LIST" : "KUGOU_LIKE_SCAN_LIMIT"]
+            }
+            payload["data"] = [["fileid": file]]; path = "/v4/delete_songs"
+        }
+        guard generation == epoch else { throw KugouFailure.sessionChanged }
+        let result = try await gateway(path, body: payload, extra: extra)
+        guard generation == epoch else { throw KugouFailure.sessionChanged }
+        guard KugouContract.number(result["status"]) == 1 else { throw KugouFailure.invalidResponse }
+        return ["provider": "kugou", "success": true, "liked": like || !explicitList.isEmpty, "listId": list]
+    }
     private func route(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
         guard ["GET", "POST"].contains(method) else { throw KugouFailure.invalidInput }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func q(_ key: String) -> String { items.first { $0.name == key }?.value ?? "" }
         func number(_ key: String, _ value: Int, max: Int) -> Int { min(max, Swift.max(0, Int(q(key)) ?? value)) }
         switch url.path {
+        case "/api/kugou/recommendations":
+            guard method == "GET" else { throw KugouFailure.invalidInput }
+            return try await recommendations(limit: Swift.max(4, number("limit", 12, max: 20)))
+        case "/api/kugou/song/like/check", "/api/kugou/song/like", "/api/kugou/playlist/add-song":
+            return try await library(url, method: method, body: body)
         case "/api/kugou/login/status": return try await status()
         case "/api/kugou/logout":
             try store.save([:]); cookies = [:]; account = nil; cachedLists = nil; checkedAt = .distantPast; generation += 1

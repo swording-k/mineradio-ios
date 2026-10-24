@@ -14,7 +14,7 @@ enum KugouContract {
               url.port == nil || url.port == 443 else { return false }
         let paths: [String: Set<String>] = [
             "songsearch.kugou.com": ["/song_search_v2"],
-            "gateway.kugou.com": ["/v7/get_all_list", "/v4/get_list_all_file", "/v5/url"],
+            "gateway.kugou.com": ["/v7/get_all_list", "/v4/get_list_all_file", "/v5/url", "/v6/add_song", "/v4/delete_songs", "/v1/app_song_list_offset"],
             "wwwapi.kugou.com": ["/play/songinfo"], "wwwapiretry.kugou.com": ["/play/songinfo"],
             "m.kugou.com": ["/app/i/getSongInfo.php"], "krcs.kugou.com": ["/search", "/download"],
             "vip.kugou.com": ["/recharge/roleinfo"]]

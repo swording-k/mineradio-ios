@@ -1,9 +1,13 @@
 import Foundation
 
-/// Native port of qishui-api.js read-only PC catalogue routes (GPL-3.0-only).
+/// Native port of qishui-api.js PC catalogue routes (GPL-3.0-only).
 /// Authentication cookies are supplied by the isolated Passport owner, never JS.
 protocol QishuiCatalogRequesting: Actor {
     func request(_ url: URL, headers: [String: String]) async throws -> [String: Any]
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any]
+}
+extension QishuiCatalogRequesting {
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] { throw QishuiCatalogFailure.invalidRequest }
 }
 
 actor QishuiCatalogAPI {
@@ -51,6 +55,9 @@ actor QishuiCatalogAPI {
     }
 
     func handle(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
+        if Set(["/api/qishui/song/like/check", "/api/qishui/song/like", "/api/qishui/playlist/collect", "/api/qishui/playlist/add-song", "/api/qishui/album/collect", "/api/qishui/song/comments"]).contains(url.path) {
+            return try await feature(url, method: method, body: body)
+        }
         guard method == "GET" || url.path == "/api/qishui/logout" else { return QishuiCatalogContract.unsupported() }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func q(_ key: String) -> String { query.first { $0.name == key }?.value ?? "" }
@@ -138,7 +145,7 @@ actor QishuiCatalogAPI {
         guard !value.isEmpty, value.utf8.count <= 128, value.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { throw QishuiCatalogFailure.invalidRequest }
         return value
     }
-    private func pc(_ path: String, _ parameters: [String: String] = [:], web: Bool = false) async throws -> [String: Any] {
+    private func pc(_ path: String, _ parameters: [String: String] = [:], web: Bool = false, payload: [String: Any]? = nil) async throws -> [String: Any] {
         let expected = generation
         var components = URLComponents(string: "https://api.qishui.com" + path)!
         var common = ["aid": "386088", "app_name": "luna_pc", "region": "cn", "geo_region": "cn", "os_region": "cn", "sim_region": "", "device_id": deviceID,
@@ -150,10 +157,105 @@ actor QishuiCatalogAPI {
         guard let url = components.url, QishuiCatalogContract.allowedAPI(url) else { throw QishuiCatalogFailure.invalidRequest }
         var headers = ["Accept": "application/json,text/plain,*/*", "User-Agent": "LunaPC/3.3.0(359450208)", "x-luna-background-type": "foreground", "x-luna-is-background-req": "0", "x-luna-is-local-user": "1"]
         headers["Cookie"] = cookies.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
-        let json = try await transport.request(url, headers: headers)
+        let json: [String: Any]
+        if let payload {
+            guard hasSession, QishuiCatalogContract.writePaths.contains(path) else { throw QishuiCatalogFailure.invalidRequest }
+            headers["Content-Type"] = "application/json"; headers["Referer"] = "https://www.qishui.com/"
+            let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
+            json = try await transport.post(url, headers: headers, body: body)
+            guard json["status_code"] != nil || json["error_code"] != nil else { throw QishuiCatalogFailure.invalidResponse }
+        } else { json = try await transport.request(url, headers: headers) }
         guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
         try QishuiCatalogContract.check(json)
         return json
+    }
+    private func feature(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
+        let check = url.path.hasSuffix("/check"), comments = url.path.hasSuffix("/comments")
+        guard method == "POST" && !check || method == "GET" && (check || comments) else { throw QishuiCatalogFailure.invalidRequest }
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func q(_ key: String) -> String { query.first { $0.name == key }?.value ?? "" }
+        var input: [String: Any] = [:]
+        if method == "POST" {
+            guard body.count <= 65536, let parsed = try JSONSerialization.jsonObject(with: body) as? [String: Any] else { throw QishuiCatalogFailure.invalidRequest }
+            input = parsed
+        }
+        let song = input["song"] as? [String: Any] ?? input
+        let rawID: Any?
+        if comments {
+            if !q("id").isEmpty { rawID = q("id") }
+            else if !q("trackId").isEmpty { rawID = q("trackId") }
+            else { rawID = input["id"] ?? input["trackId"] }
+        } else { rawID = song["providerSongId"] ?? song["trackId"] ?? song["track_id"] ?? song["id"] }
+        var ids: [String] = [], id = "", playlistID = "", text = "", flag = true
+        if check {
+            let raw = q("ids").isEmpty ? q("id") : q("ids")
+            guard raw.count <= 5200 else { throw QishuiCatalogFailure.invalidRequest }
+            var seen = Set<String>()
+            for item in raw.split(separator: ",") { let value = try checkedID(String(item).trimmingCharacters(in: .whitespaces)); if seen.insert(value).inserted { ids.append(value) } }
+            guard ids.count <= 40 else { throw QishuiCatalogFailure.invalidRequest }
+        } else if url.path.hasSuffix("/add-song") {
+            id = try checkedID(QishuiCatalogContract.text(rawID))
+            playlistID = try checkedID(QishuiCatalogContract.text(input["pid"] ?? input["playlistId"]).replacingOccurrences(of: "^qishui:", with: "", options: .regularExpression))
+        } else {
+            let raw = QishuiCatalogContract.text(url.path.contains("/playlist/") ? (input["id"] ?? input["playlistId"]) : (url.path.contains("/album/") ? (input["id"] ?? input["albumId"]) : rawID))
+            id = try checkedID(raw.replacingOccurrences(of: "^qishui:", with: "", options: .regularExpression))
+        }
+        if method == "POST" {
+            let key = url.path.hasSuffix("/like") ? "like" : "collected"
+            if let value = input[key] {
+                guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { throw QishuiCatalogFailure.invalidRequest }
+                flag = number.boolValue
+            }
+            if comments {
+                text = QishuiCatalogContract.text(input["content"] ?? input["text"])
+                guard !text.isEmpty, text.count <= 2000 else { throw QishuiCatalogFailure.invalidRequest }
+            }
+        }
+        guard (await validateAccount())["loggedIn"] as? Bool == true else { return ["provider": "qishui", "loggedIn": false, "success": false, "liked": [:], "complete": false, "error": "QISHUI_COOKIE_REQUIRED"] }
+        if check {
+            let library = try await library()
+            var known = library["likedTracks"] as? [[String: Any]] ?? [], complete = false
+            if let liked = library["likedPlaylistID"] as? String, !liked.isEmpty {
+                let detail = try await playlist(liked, limit: 50, offset: 0)
+                known += detail["tracks"] as? [[String: Any]] ?? []
+                complete = detail["hasMore"] as? Bool == false
+            }
+            let set = Set(known.map { QishuiCatalogContract.text($0["providerSongId"] ?? $0["id"]) })
+            let liked = Dictionary(uniqueKeysWithValues: ids.map { ($0, set.contains($0)) })
+            return ["provider": "qishui", "loggedIn": true, "ids": ids, "liked": liked, "complete": complete, "checkedCount": set.count]
+        }
+        if comments, method == "GET" {
+            let cursor = q("cursor"), count = min(50, max(1, Int(q("limit")) ?? 18))
+            guard cursor.count <= 512, !cursor.contains("\n"), !cursor.contains("\r") else { throw QishuiCatalogFailure.invalidRequest }
+            let result = try await pc("/luna/pc/comments", ["group_id": id, "cursor": cursor, "count": String(count), "group_type": "0"])
+            let data = QishuiCatalogContract.data(result)
+            let rows = ["comments", "comment_list", "commentList", "items", "list"].compactMap { data[$0] as? [[String: Any]] }.first ?? []
+            let mapped = rows.prefix(count).map(QishuiCatalogContract.comment).filter { !QishuiCatalogContract.text($0["content"]).isEmpty }
+            let next = QishuiCatalogContract.text(data["next_cursor"] ?? data["nextCursor"] ?? data["cursor"])
+            return ["provider": "qishui", "id": id, "loggedIn": true, "comments": mapped, "total": Double(QishuiCatalogContract.text(data["total"] ?? data["total_count"])) ?? Double(mapped.count), "cursor": cursor, "nextCursor": next, "hasMore": QishuiCatalogContract.truth(data["has_more"] ?? data["hasMore"]) || !next.isEmpty && next != cursor]
+        }
+        let path: String, payload: [String: Any]
+        var response: [String: Any] = ["provider": "qishui", "loggedIn": true, "id": id, "success": true, "ok": true]
+        switch url.path {
+        case "/api/qishui/song/like":
+            path = "/luna/pc/me/collection/media" + (flag ? "" : "/delete"); payload = ["media": [["type": "track", "id": id]], "scene": ""]; response["liked"] = flag
+        case "/api/qishui/playlist/collect":
+            path = "/luna/pc/me/collection/playlist" + (flag ? "" : "/delete"); payload = ["playlist_ids": [id]]; response["collected"] = flag
+        case "/api/qishui/album/collect":
+            path = "/luna/pc/me/collection/album" + (flag ? "" : "/delete"); payload = ["album_ids": [id]]; response["collected"] = flag
+        case "/api/qishui/playlist/add-song":
+            path = "/luna/pc/me/playlist/media/append"; payload = ["playlist_id": playlistID, "media": [["type": "track", "id": id]]]; response["pid"] = playlistID
+        case "/api/qishui/song/comments": path = "/luna/pc/comments/create"; payload = ["group_id": id, "text": text, "group_type": 0]; response["created"] = true
+        default: throw QishuiCatalogFailure.invalidRequest
+        }
+        let result = try await pc(path, payload: payload)
+        if comments {
+            let data = QishuiCatalogContract.data(result)
+            let raw = (data["comments"] as? [[String: Any]])?.first ?? data
+            let comment = QishuiCatalogContract.comment(raw)
+            response["comment"] = QishuiCatalogContract.text(comment["content"]).isEmpty ? NSNull() : comment
+        } else { cachedLibrary = nil; libraryAt = .distantPast; cursors = [:]; cursorOrder = [] }
+        return response
     }
     private func publicTrack(_ id: String) async throws -> [String: Any] {
         var components = URLComponents(string: "https://beta-luna.douyin.com/luna/h5/seo_track")!
@@ -262,8 +364,17 @@ actor QishuiCatalogTransport: QishuiCatalogRequesting {
         guard QishuiCatalogContract.allowedAPI(url) else { throw QishuiCatalogFailure.invalidRequest }
         var request = URLRequest(url: url); request.httpMethod = "GET"
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        return try await send(request)
+    }
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
+        guard QishuiCatalogContract.allowedAPI(url), QishuiCatalogContract.writePaths.contains(url.path), body.count <= 65536 else { throw QishuiCatalogFailure.invalidRequest }
+        var request = URLRequest(url: url); request.httpMethod = "POST"; request.httpBody = body
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        return try await send(request)
+    }
+    private func send(_ request: URLRequest) async throws -> [String: Any] {
         let (bytes, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.url == url else { throw QishuiCatalogFailure.invalidResponse }
+        guard let http = response as? HTTPURLResponse, http.url == request.url else { throw QishuiCatalogFailure.invalidResponse }
         if http.statusCode == 401 { throw QishuiCatalogFailure.sessionExpired }
         guard (200...299).contains(http.statusCode), bytes.count <= 8 * 1024 * 1024,
               let json = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else { throw QishuiCatalogFailure.invalidResponse }

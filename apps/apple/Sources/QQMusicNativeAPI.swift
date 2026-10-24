@@ -14,7 +14,8 @@ enum QQMusicContract {
     static func allowedAPI(_ url: URL) -> Bool {
         guard url.scheme == "https", url.user == nil, url.password == nil, url.port == nil || url.port == 443, url.fragment == nil else {return false}
         let paths: [String: Set<String>] = ["u.y.qq.com": ["/cgi-bin/musicu.fcg", "/cgi-bin/musics.fcg"], "c.y.qq.com": ["/rsc/fcgi-bin/fcg_get_profile_homepage.fcg", "/rsc/fcgi-bin/fcg_user_created_diss", "/fav/fcgi-bin/fcg_get_profile_order_asset.fcg", "/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg", "/lyric/fcgi-bin/fcg_query_lyric_new.fcg", "/splcloud/fcgi-bin/smartbox_new.fcg"]]
-        return paths[url.host ?? ""]?.contains(url.path) == true
+        let detailPaths: Set<String> = ["/v8/fcg-bin/fcg_v8_album_info_cp.fcg", "/base/fcgi-bin/fcg_global_comment_h5.fcg"]
+        return paths[url.host ?? ""]?.contains(url.path) == true || (url.host == "c.y.qq.com" && detailPaths.contains(url.path))
     }
     static func allowedMedia(_ url: URL) -> Bool {
         guard ["https", "http"].contains(url.scheme ?? ""), url.user == nil, url.password == nil, url.port == nil || [80, 443].contains(url.port!) else {return false}
@@ -129,6 +130,11 @@ actor QQMusicNativeAPI {
         case "/api/qq/search": return try await search(q("keywords"), limit: min(30, limit), offset: offset)
         case "/api/qq/song/url": return try await songURL(q("mid").isEmpty ? q("id") : q("mid"), media: q("mediaMid"), quality: q("quality"))
         case "/api/qq/lyric": return try await lyric(q("mid").isEmpty ? q("id") : q("mid"))
+        case "/api/qq/album/detail", "/api/qq/artist/detail", "/api/qq/song/comments":
+            guard method == "GET" else { return ["provider": "qq", "error": "METHOD_NOT_ALLOWED", "code": 405] }
+            if url.path == "/api/qq/album/detail" { return try await albumDetail(q("mid").isEmpty ? (q("albummid").isEmpty ? q("albumMid") : q("albummid")) : q("mid"), limit: limit) }
+            if url.path == "/api/qq/artist/detail" { return try await artistDetail(q("mid").isEmpty ? q("singermid") : q("mid"), limit: min(80, limit)) }
+            return try await comments(id: q("id").isEmpty ? q("qqId") : q("id"), mid: q("mid").isEmpty ? q("songmid") : q("mid"), limit: min(50, limit), offset: offset)
         default: return ["provider": "qq", "supported": false, "code": 501, "error": "QQ_APPLE_CAPABILITY_NOT_IMPLEMENTED"]
         }
     }
@@ -225,6 +231,73 @@ actor QQMusicNativeAPI {
         let block = response["lyric"] as? [String: Any] ?? [:], data = block["data"] as? [String: Any] ?? [:]
         func decode(_ value: Any?) -> String {let text = QQMusicContract.text(value); return Data(base64Encoded: text).flatMap {String(data: $0, encoding: .utf8)} ?? text}
         return ["provider": "qq", "mid": mid, "lyric": decode(data["lyric"]), "tlyric": decode(data["trans"]), "qrc": decode(data["qrc"]), "roma": decode(data["roma"]), "yrc": ""]
+    }
+    private func albumDetail(_ mid: String, limit: Int) async throws -> [String: Any] {
+        guard validMid(mid) else { throw Failure.invalidRequest }
+        let response = try await get("https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg", ["albummid": mid, "g_tk": "5381", "loginUin": uin.isEmpty ? "0" : uin, "hostUin": "0"])
+        guard response["code"] != nil, QQMusicContract.integer(response["code"]) == 0, let data = response["data"] as? [String: Any] else { throw Failure.denied }
+        let raw = data["list"] as? [[String: Any]] ?? data["songlist"] as? [[String: Any]] ?? []
+        let name = QQMusicContract.text(data["name"] ?? data["title"] ?? data["albumname"])
+        let songs = raw.prefix(limit).map { row -> [String: Any] in
+            var track = row
+            if QQMusicContract.text(track["albummid"]).isEmpty { track["albummid"] = mid }
+            if QQMusicContract.text(track["albumname"]).isEmpty { track["albumname"] = name }
+            return QQMusicContract.song(track)
+        }
+        let total = QQMusicContract.integer(data["total_song_num"] ?? data["total"] ?? data["songnum"] ?? raw.count)
+        let album: [String: Any] = ["provider": "qq", "id": data["id"] ?? data["albumid"] ?? "", "mid": mid, "albumMid": mid, "name": name,
+                "artist": data["singername"] ?? data["singerName"] ?? songs.first?["artist"] ?? "", "cover": "https://y.qq.com/music/photo_new/T002R300x300M000\(mid).jpg",
+                "releaseDate": data["aDate"] ?? data["publictime"] ?? "", "trackCount": total]
+        return ["provider": "qq", "album": album, "songs": songs, "total": total]
+    }
+    private func artistDetail(_ mid: String, limit: Int) async throws -> [String: Any] {
+        guard validMid(mid) else { throw Failure.invalidRequest }
+        let response = try await music(["singer": ["module": "music.web_singer_info_svr", "method": "get_singer_detail_info", "param": ["sort": 5, "singermid": mid, "sin": 0, "num": limit]]])
+        guard (response["code"] == nil || QQMusicContract.integer(response["code"]) == 0), let block = response["singer"] as? [String: Any], block["code"] != nil,
+              QQMusicContract.integer(block["code"]) == 0, let data = block["data"] as? [String: Any] else { throw Failure.denied }
+        let info = data["singer_info"] as? [String: Any] ?? data["singerInfo"] as? [String: Any] ?? [:]
+        let songs = (data["songlist"] as? [[String: Any]] ?? []).prefix(limit).map(QQMusicContract.song)
+        let total = QQMusicContract.integer(data["total_song"] ?? data["song_count"] ?? songs.count)
+        return ["provider": "qq", "total": total, "songs": songs,
+                "artist": ["provider": "qq", "id": info["id"] ?? "", "mid": info["mid"] ?? mid, "name": info["name"] ?? info["title"] ?? "",
+                           "avatar": info["pic"] ?? info["avatar"] ?? "https://y.qq.com/music/photo_new/T001R300x300M000\(mid).jpg",
+                           "fans": QQMusicContract.integer(info["fans"]), "musicSize": total, "albumSize": QQMusicContract.integer(data["total_album"]), "mvSize": QQMusicContract.integer(data["total_mv"])]]
+    }
+    private func comments(id: String, mid: String, limit: Int, offset: Int) async throws -> [String: Any] {
+        var songID = id
+        if songID.isEmpty {
+            guard validMid(mid) else { throw Failure.invalidRequest }
+            let response = try await music(["songinfo": ["module": "music.pf_song_detail_svr", "method": "get_song_detail_yqq", "param": ["song_mid": mid]]])
+            guard let block = response["songinfo"] as? [String: Any], block["code"] != nil, QQMusicContract.integer(block["code"]) == 0,
+                  let data = block["data"] as? [String: Any], let track = data["track_info"] as? [String: Any] else { throw Failure.denied }
+            songID = QQMusicContract.text(track["id"] ?? track["songid"])
+        }
+        guard !songID.isEmpty, songID.count < 24, songID.utf8.allSatisfy({ (48...57).contains($0) }) else { throw Failure.invalidRequest }
+        let page = offset / limit, skip = offset % limit
+        func fetchPage(_ number: Int) async throws -> [String: Any] {
+            let response = try await get("https://c.y.qq.com/base/fcgi-bin/fcg_global_comment_h5.fcg", ["g_tk": "5381", "loginUin": uin.isEmpty ? "0" : uin, "hostUin": "0", "cid": "205360772", "reqtype": "2", "biztype": "1", "topid": songID, "cmd": "8", "needmusiccrit": "0", "pagenum": String(number), "pagesize": String(limit)])
+            guard response["code"] != nil, QQMusicContract.integer(response["code"]) == 0 else { throw Failure.denied }
+            return response
+        }
+        let response = try await fetchPage(page)
+        let regular = response["comment"] as? [String: Any] ?? [:]
+        let hotRows = (response["hot_comment"] as? [String: Any])?["commentlist"] as? [[String: Any]] ?? []
+        let hot = offset == 0 && !hotRows.isEmpty
+        var rows = hot ? hotRows : regular["commentlist"] as? [[String: Any]] ?? []
+        let total = QQMusicContract.integer(regular["commenttotal"] ?? regular["comment_total"] ?? rows.count)
+        if !hot && skip > 0 && rows.count >= limit && offset + limit < total {
+            let second = try await fetchPage(page + 1)
+            rows += (second["comment"] as? [String: Any])?["commentlist"] as? [[String: Any]] ?? []
+        }
+        let selected = hot ? Array(rows.prefix(limit)) : Array(rows.dropFirst(skip).prefix(limit))
+        let comments = selected.map { raw -> [String: Any] in
+            let user = raw["user"] as? [String: Any] ?? [:]
+            let seconds = Int64(QQMusicContract.integer(raw["time"] ?? raw["commenttime"] ?? raw["createTime"]))
+            return ["id": raw["commentid"] ?? raw["commentId"] ?? raw["id"] ?? "", "content": raw["rootcommentcontent"] ?? raw["content"] ?? "",
+                    "likedCount": QQMusicContract.integer(raw["praisenum"] ?? raw["praise_num"] ?? raw["likedCount"]), "time": seconds > 0 && seconds < 10000000000 ? seconds * 1000 : seconds,
+                    "user": ["id": raw["encrypt_uin"] ?? raw["uin"] ?? user["uin"] ?? "", "nickname": raw["nick"] ?? raw["nickname"] ?? user["nickname"] ?? "QQ 音乐用户", "avatar": raw["avatarurl"] ?? user["avatarurl"] ?? ""]]
+        }
+        return ["provider": "qq", "id": songID, "total": total, "comments": comments, "hot": hot, "offset": offset, "nextOffset": offset + selected.count, "hasMore": !hot && offset + selected.count < total]
     }
     private func validMid(_ value: String) -> Bool {!value.isEmpty && value.count <= 64 && value.allSatisfy {$0.isASCII && ($0.isLetter || $0.isNumber)}}
     private func get(_ base: String, _ values: [String: String]) async throws -> [String: Any] {
