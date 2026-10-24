@@ -390,6 +390,7 @@
     }, true);
   }
   if (handle) {
+    handle.setAttribute('aria-label', '展开播放控制条');
     handle.addEventListener('pointerup', function (event) { if (event.pointerType === 'touch' || event.pointerType === 'pen') unfoldControls(); }, true);
     handle.addEventListener('click', unfoldControls, true);
   }

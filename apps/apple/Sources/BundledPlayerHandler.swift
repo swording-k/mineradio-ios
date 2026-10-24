@@ -18,7 +18,8 @@ final class BundledPlayerHandler: NSObject, WKURLSchemeHandler {
         }
         let source = url.path == "/js/index-loader.js"
             ? Bundle.main.resourceURL?.appendingPathComponent("GeneratedWeb/index-modules.js") ?? file : file
-        if let data = try? Data(contentsOf: source) {
+        if let original = try? Data(contentsOf: source) {
+            let data = file.pathExtension == "html" ? AppleHTMLPolicy.prepare(original) : original
             let mime: String
             switch file.pathExtension.lowercased() {
             case "js": mime = "application/javascript"

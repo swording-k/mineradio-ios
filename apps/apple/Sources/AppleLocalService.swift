@@ -190,7 +190,8 @@ import UniformTypeIdentifiers
                 guard file.path.hasPrefix(root.standardizedFileURL.resolvingSymlinksInPath().path + "/") else { throw URLError(.noPermissionsToReadFile) }
                 // Same ordered source as index-loader, served in one request on Apple.
                 let source = url.path == "/js/index-loader.js" ? generatedRoot?.appendingPathComponent("index-modules.js") ?? file : file
-                let data = try Data(contentsOf: source)
+                let original = try Data(contentsOf: source)
+                let data = file.pathExtension == "html" ? AppleHTMLPolicy.prepare(original) : original
                 let type = file.pathExtension == "js" ? "application/javascript" : (UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream")
                 send(connection, status: 200, type: type, data: data)
             }

@@ -19,6 +19,7 @@ struct OriginalPlayerView: UIViewRepresentable {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAccountLogin")
         }
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDiagnostics")
         config.setURLSchemeHandler(BundledPlayerHandler(), forURLScheme: "mineradio-app")
         if let sessionToken, let tokenJSON = try? JSONSerialization.data(withJSONObject: [sessionToken]),
            let tokenText = String(data: tokenJSON, encoding: .utf8) {
@@ -78,10 +79,19 @@ struct OriginalPlayerView: UIViewRepresentable {
         context.coordinator.updateAccountPresentation(view)
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply {
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandlerWithReply {
         var parent: OriginalPlayerView
         private var presentedState: Bool?
-        init(_ parent: OriginalPlayerView) { self.parent = parent }
+        private var memoryWarning: NSObjectProtocol?
+        init(_ parent: OriginalPlayerView) {
+            self.parent = parent
+            super.init()
+            AppleDiagnostics.shared.recordNative("view-created")
+            memoryWarning = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in AppleDiagnostics.shared.recordNative("memory-warning") }
+            }
+        }
+        deinit { if let memoryWarning { NotificationCenter.default.removeObserver(memoryWarning) } }
         func updateAccountPresentation(_ view: WKWebView, force: Bool = false) {
             guard force || presentedState != parent.accountPresented else { return }
             presentedState = parent.accountPresented
@@ -104,13 +114,17 @@ struct OriginalPlayerView: UIViewRepresentable {
                 replyHandler(["recorded": true], nil); return
             }
             #endif
+            if message.name == "appleDiagnostics", let input = message.body as? [String: Any] {
+                AppleDiagnostics.shared.recordWeb(input)
+                replyHandler(["recorded": true], nil); return
+            }
             if message.name == "appleAudioActivate" {
-                do {
-                    let session = AVAudioSession.sharedInstance()
-                    try session.setCategory(.playback, mode: .default)
-                    try session.setActive(true)
-                    replyHandler(["active": true], nil)
-                } catch { replyHandler(nil, "音频会话启动失败：" + error.localizedDescription) }
+                Task { @MainActor in
+                    do {
+                        try await AppleAudioActivation.shared.activate()
+                        replyHandler(["active": true], nil)
+                    } catch { replyHandler(nil, "音频会话启动失败：" + error.localizedDescription) }
+                }
                 return
             }
             guard message.name == "appleAccountLogin", let input = message.body as? [String: Any],
@@ -121,6 +135,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            AppleDiagnostics.shared.recordNative("page-loaded")
             // WebKit may configure its scroll recognizers while loading the page.
             webView.scrollView.bouncesZoom = false
             parent.failure = nil
@@ -142,10 +157,12 @@ struct OriginalPlayerView: UIViewRepresentable {
             #endif
         }
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            AppleDiagnostics.shared.recordNative("webcontent-terminated")
             parent.failure = "页面进程已退出。请重试；如重复发生，需要降低动效资源占用。"
         }
         private func report(_ error: Error) {
             if (error as NSError).code != NSURLErrorCancelled {
+                AppleDiagnostics.shared.recordNative("page-load-failed")
                 parent.failure = "设备内播放器页面加载失败，请重试。\n" + error.localizedDescription
             }
         }

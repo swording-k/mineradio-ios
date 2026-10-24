@@ -8,18 +8,24 @@ const providers = ['NeteaseContract','QQMusicNativeAPI','KugouContract','KugouTr
 const netease = ['NeteaseEAPI','NeteaseContract','NeteaseTransport','NeteaseNativeAPI','NeteaseFeatureRoutes','NeteaseFeatureContract'];
 const suites = [
   ['EndpointPolicyTests', ['EndpointPolicy']],
+  ['AppleAudioActivationTests', ['AppleAudioActivation']],
+  ['AppleDiagnosticsTests', ['AppleDiagnostics']],
+  ['AppleHTMLPolicyTests', ['AppleHTMLPolicy']],
   ['NeteaseContractTests', ['NeteaseEAPI','NeteaseContract']],
   ['NeteaseRoutesTests', netease],
   ['NeteaseFeatureRoutesTests', netease],
   ['OfficialLoginPolicyTests', ['OfficialLoginPolicy']],
   ['QQMusicNativeTests', ['QQMusicNativeAPI']],
+  ['QQMusicFeatureTests', ['QQMusicNativeAPI']],
   ['KugouNativeTests', ['KugouContract','KugouTransport','KugouNativeAPI']],
+  ['KugouLibraryTests', ['KugouContract','KugouTransport','KugouNativeAPI']],
   ['QishuiAuthContractTests', ['QishuiAuthContract']],
   ['QishuiSecurityFlowTests', ['QishuiSecurityFlow']],
   ['QishuiCatalogTests', ['QishuiCatalogContract','QishuiCatalogAPI']],
+  ['QishuiFeatureTests', ['QishuiCatalogContract','QishuiCatalogAPI']],
   ['AppleMediaPolicyTests', providers],
   ['MediaStreamTests', [...providers,'NeteaseMediaStream']],
-  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow'])]],
+  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow'])]],
 ];
 function run(command, args) {
   const result = spawnSync(command, args, {cwd: root, stdio: 'inherit'});

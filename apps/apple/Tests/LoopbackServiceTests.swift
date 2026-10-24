@@ -13,7 +13,8 @@ import Foundation
         let (html, page) = try await URLSession.shared.data(from: origin)
         precondition((page as? HTTPURLResponse)?.statusCode == 200)
         let originalHTML = try Data(contentsOf: root.appendingPathComponent("index.html"))
-        precondition(html == originalHTML)
+        precondition(html == AppleHTMLPolicy.prepare(originalHTML))
+        precondition(html != originalHTML, "External fonts are deferred by the native delivery policy")
         let (bundle, bundleResponse) = try await URLSession.shared.data(from: origin.appendingPathComponent("js/index-loader.js"))
         precondition((bundleResponse as? HTTPURLResponse)?.statusCode == 200)
         let expectedBundle = try Data(contentsOf: URL(fileURLWithPath: "apps/apple/GeneratedWeb/index-modules.js"))
@@ -29,6 +30,6 @@ import Foundation
         precondition(result["supported"] as? Bool == false)
         let (_, rejectedMedia) = try await URLSession.shared.data(from: URL(string: origin.absoluteString + "/api/audio?url=http%3A%2F%2F127.0.0.1%2Fprivate")!)
         precondition((rejectedMedia as? HTTPURLResponse)?.statusCode == 403)
-        print("Loopback: exact original HTML, private API gate, explicit unsupported route and media host boundary passed")
+        print("Loopback: original HTML with deferred external fonts, exact module bundle, private API gate, explicit unsupported route and media host boundary passed")
     }
 }

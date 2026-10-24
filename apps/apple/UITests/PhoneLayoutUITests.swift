@@ -30,7 +30,7 @@ final class PhoneLayoutUITests: XCTestCase {
         volume.tap()
         app.buttons["收起播放控制条"].tap()
         XCTAssertFalse(app.buttons["播放/暂停"].isHittable)
-        app.buttons["展开播放器控制台"].tap()
+        app.buttons["展开播放控制条"].tap()
         XCTAssertTrue(app.buttons["播放/暂停"].isHittable)
         let console = app.buttons["视觉控制台"]
         XCTAssertTrue(console.isHittable)
@@ -70,16 +70,22 @@ final class PhoneLayoutUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         defer { app.terminate() }
+        XCTAssertTrue(app.buttons["检查手机布局"].waitForExistence(timeout: 45), "Wait for the actual fixture; production controls can appear before document-end scripts")
         let more = app.buttons["更多播放控制"]
         XCTAssertTrue(more.waitForExistence(timeout: 45))
-        app.buttons["展开播放器控制台"].tap()
-        // Measure the 1.5-second dwell and actual play-button hit test in the
-        // WebKit clock, avoiding slow accessibility queries consuming idle time.
-        XCTAssertTrue(app.staticTexts["控制条持续可用"].waitForExistence(timeout: 12))
+        // The handle is under the initially visible bar. Exercise the user's
+        // actual restore flow after the bar folds, rather than tapping through it.
         let hidden = NSPredicate(format: "hittable == false")
         expectation(for: hidden, evaluatedWith: more)
         waitForExpectations(timeout: 12)
-        app.buttons["展开播放器控制台"].tap()
+        XCTAssertTrue(app.buttons["展开播放控制条"].isHittable)
+        app.buttons["展开播放控制条"].tap()
+        // Measure the 1.5-second dwell and actual play-button hit test in the
+        // WebKit clock, avoiding slow accessibility queries consuming idle time.
+        XCTAssertTrue(app.staticTexts["控制条持续可用"].waitForExistence(timeout: 12))
+        expectation(for: hidden, evaluatedWith: more)
+        waitForExpectations(timeout: 12)
+        app.buttons["展开播放控制条"].tap()
         XCTAssertTrue(more.isHittable)
     }
 }

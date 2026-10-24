@@ -8,6 +8,7 @@ enum AppleLayoutSmoke {
       const wait = setInterval(() => {
         if (!document.querySelector('style[data-apple-layout]')) { if (++tries > 600) clearInterval(wait); return; }
         clearInterval(wait);
+        try {
         if (window.__mineradioAppleSetAuthPresentation) window.__mineradioAppleSetAuthPresentation(true);
         const style = document.createElement('style');
         // Keep rendering asleep but expose the real canvas to native pointer hit testing.
@@ -60,6 +61,12 @@ enum AppleLayoutSmoke {
         });
         document.body.append(button,status,zoom,visibility);
         if (controlsAutoHide) holdBottomControlsVisible(4000);
+        } catch (error) {
+          const failed = document.createElement('p');
+          failed.textContent = '布局夹具错误：' + String(error && error.message || error);
+          failed.style.cssText = 'position:fixed;top:180px;left:12px;z-index:2147483647;background:white;color:black';
+          document.body.appendChild(failed);
+        }
       }, 50);
     })();
     """
