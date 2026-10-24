@@ -4,6 +4,8 @@ Universal iPad/iPhone development port on `codex/ipad-client`. Refs #14, #15 and
 
 ## Architecture
 
+Current functional coverage and missing desktop services are tracked in [Apple feature parity](../../docs/APPLE_FEATURE_PARITY.md). TestFlight approval is not a claim of full desktop parity. The 2026-10-24 unreleased source adds native NetEase hearts, playlist actions, album/artist details, comments and podcast routes; authenticated operations still require real-account validation. The earlier statement that desktop Spotify is active was incorrect: upstream 2.2.0 explicitly removed its entry points and HTTP access while leaving dormant files.
+
 The original `public/` UI and visual engine run in WKWebView. Original modules remain unchanged and are bundled in their original order; Apple postludes add touch, control anchoring, bounded lyric residency and native login invocation. A loopback service runs inside the app. No Mac server is required. Production uses stable `127.0.0.1:19363`; simulators/tests use independent ports so parallel clients do not collide.
 
 QQ/Kugou open isolated official WKWebView login windows using the original desktop entry URLs. Native cookie observation hands only matching provider cookies to the native adapter. The player receives verified status, never raw credentials. Cancel closes the window and restores rendering; covered stage rendering uses the existing sleep path. Account state is verified against remote account-scoped responses; a cookie or public profile alone is insufficient. Cookies persist in separate Keychain entries and are cleared on provider logout.

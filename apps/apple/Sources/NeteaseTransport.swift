@@ -45,7 +45,12 @@ actor NeteaseTransport: NeteaseRequesting {
             "deviceId": deviceID, "versioncode": "140", "channel": "distribution",
             "__csrf": cookies["__csrf"] ?? "", "requestId": "\(Int(Date().timeIntervalSince1970 * 1000))_\(Int.random(in: 1000...9999))"]
         for (key, value) in cookies { header[key] = value }
-        let useWeb = ["/api/w/nuser/account/get", "/api/user/playlist", "/api/v3/discovery/recommend/songs", "/api/personalized/playlist"].contains(path)
+        let useWeb = ["/api/w/nuser/account/get", "/api/user/playlist", "/api/v3/discovery/recommend/songs", "/api/personalized/playlist",
+                      "/api/radio/like", "/api/playlist/create", "/api/album/sub", "/api/album/unsub", "/api/album/sublist",
+                      "/api/artist/top/song", "/api/djradio/hot/v1", "/api/djradio/v2/get", "/api/dj/program/byradio",
+                      "/api/djradio/get/subed", "/api/djradio/get/byuser", "/api/play-record/voice/list"].contains(path)
+            || path.hasPrefix("/api/v1/album/") || path.hasPrefix("/api/v1/resource/comments/")
+            || path.hasPrefix("/api/resource/comments/") || path.hasPrefix("/api/v1/comment/")
         var payload = fields
         if useWeb { payload["csrf_token"] = cookies["__csrf"] ?? "" }
         else { payload["header"] = header }

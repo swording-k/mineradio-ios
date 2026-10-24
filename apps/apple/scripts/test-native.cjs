@@ -5,11 +5,12 @@ const root = path.resolve(__dirname, '../../..');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'mineradio-native-tests-'));
 const src = names => names.map(name => `apps/apple/Sources/${name}.swift`);
 const providers = ['NeteaseContract','QQMusicNativeAPI','KugouContract','KugouTransport','KugouNativeAPI','QishuiCatalogContract','QishuiCatalogAPI','AppleMediaPolicy'];
-const netease = ['NeteaseEAPI','NeteaseContract','NeteaseTransport','NeteaseNativeAPI'];
+const netease = ['NeteaseEAPI','NeteaseContract','NeteaseTransport','NeteaseNativeAPI','NeteaseFeatureRoutes','NeteaseFeatureContract'];
 const suites = [
   ['EndpointPolicyTests', ['EndpointPolicy']],
   ['NeteaseContractTests', ['NeteaseEAPI','NeteaseContract']],
   ['NeteaseRoutesTests', netease],
+  ['NeteaseFeatureRoutesTests', netease],
   ['OfficialLoginPolicyTests', ['OfficialLoginPolicy']],
   ['QQMusicNativeTests', ['QQMusicNativeAPI']],
   ['KugouNativeTests', ['KugouContract','KugouTransport','KugouNativeAPI']],

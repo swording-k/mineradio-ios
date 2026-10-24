@@ -107,12 +107,13 @@ actor NeteaseNativeAPI {
             return ["loggedIn": account["loggedIn"] ?? false, "dailySongs": daily,
                     "playlists": (personalized["result"] as? [[String: Any]] ?? []).map(NeteaseContract.playlist), "podcasts": []]
         default:
+            if let result = try await handleFeature(url, method: method, body: body) { return result }
             return ["ok": false, "code": 501, "supported": false, "error": "APPLE_CAPABILITY_NOT_IMPLEMENTED",
                     "message": "此功能尚未完成 Apple 端适配。", "loggedIn": false, "songs": [], "playlists": []]
         }
     }
 
-    private func status() async throws -> [String: Any] {
+    func status() async throws -> [String: Any] {
         if let cachedStatus, Date().timeIntervalSince(statusCheckedAt) < 5 { return cachedStatus }
         let body = try await transport.call("/api/w/nuser/account/get", [:])
         let profile = body["profile"] as? [String: Any] ?? [:]
