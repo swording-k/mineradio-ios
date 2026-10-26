@@ -278,14 +278,23 @@ actor QishuiCatalogAPI {
     /// 仅在已登录时调用；拿到的签名播放地址用于用户自身有权限的内容，不绕过会员/付费。
     private func seoPlayback(_ id: String, membership: [String: Any]) async throws -> [String: Any] {
         let seo = try await publicTrack(id)
+        NSLog("[QISHUI-DIAG] seo_track 顶层 keys = %@", seo.keys.sorted().joined(separator: ","))
         // seo_track 返回里定位 track_player（可能在 data / 顶层 / track 下）。
         let root = QishuiCatalogContract.data(seo)
+        NSLog("[QISHUI-DIAG] seo root keys = %@", root.keys.sorted().joined(separator: ","))
         let track = QishuiCatalogContract.firstDictionary(root["track"], root["seo_track"], seo["track"])
+        NSLog("[QISHUI-DIAG] track keys = %@", track.keys.sorted().joined(separator: ","))
         let player = QishuiCatalogContract.firstDictionary(root["track_player"], root["trackPlayer"],
                                                            seo["track_player"], track["track_player"], track["trackPlayer"])
+        NSLog("[QISHUI-DIAG] player keys = %@", player.keys.sorted().joined(separator: ","))
         let playerInfoURL = QishuiCatalogContract.text(player["url_player_info"] ?? player["URLPlayerInfo"] ?? player["urlPlayerInfo"])
-        guard !playerInfoURL.isEmpty, let url = URL(string: playerInfoURL), url.scheme == "https",
-              QishuiCatalogContract.allowedMedia(url) else {
+        NSLog("[QISHUI-DIAG] url_player_info host = %@ (empty=%@)", URL(string: playerInfoURL)?.host ?? "nil", playerInfoURL.isEmpty ? "YES" : "NO")
+        guard !playerInfoURL.isEmpty, let url = URL(string: playerInfoURL), url.scheme == "https" else {
+            NSLog("[QISHUI-DIAG] 失败：url_player_info 缺失或非 https")
+            throw QishuiCatalogFailure.invalidResponse
+        }
+        if !QishuiCatalogContract.allowedMedia(url) {
+            NSLog("[QISHUI-DIAG] 失败：host 不在 allowedMedia 白名单 -> %@", url.host ?? "nil")
             throw QishuiCatalogFailure.invalidResponse
         }
         let stream = try await playerInfo(url, expectedID: id, membership: membership, seoTrack: track)
