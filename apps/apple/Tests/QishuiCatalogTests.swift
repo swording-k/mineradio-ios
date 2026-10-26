@@ -48,6 +48,10 @@ private actor CatalogFixture: QishuiCatalogRequesting {
         precondition(!QishuiCatalogContract.allowedAPI(URL(string: "https://api.qishui.com.evil.test/luna/pc/me")!))
         precondition(!QishuiCatalogContract.allowedAPI(URL(string: "https://api.qishui.com/private")!))
         precondition(!QishuiCatalogContract.allowedMedia(URL(string: "https://127.0.0.1/audio.m4a")!))
+        // 汽水封面：urls 为前缀，需拼 uri 与尺寸模板（对照桌面 qishuiImageUrl）。
+        precondition(QishuiCatalogContract.image(["urls": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos-cn-v-2774c002/abc"])
+                     == "https://p3-luna.douyinpic.com/img/tos-cn-v-2774c002/abc~c5_300x300.jpg")
+        precondition(QishuiCatalogContract.image(["urls": ["https://evil.test/img/"], "uri": "x"]).isEmpty)
         precondition(QishuiCatalogContract.playback(["data": ["track": ["id": "1", "duration_ms": 180000, "label_info": ["only_vip_playable": true], "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/private.m4a", "duration": 180]]]]]], membership: [:], publicSource: false)["playable"] as? Bool == false)
         let svipOnly: [String: Any] = ["data": ["track": ["id": "1", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/hires.flac", "duration": 180, "quality": "hires"]]]]]]
         precondition(QishuiCatalogContract.playback(svipOnly, membership: ["membershipKnown": true, "isVip": true, "isSvip": false], publicSource: false)["playable"] as? Bool == false)

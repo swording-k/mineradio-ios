@@ -21,7 +21,7 @@ enum QishuiCatalogContract {
     static func allowedMedia(_ url: URL) -> Bool {
         guard ["https", "http"].contains(url.scheme ?? ""), let host = url.host?.lowercased(), url.user == nil, url.password == nil,
               url.port == nil || url.port == 443 || url.port == 80 else { return false }
-        return ["douyincdn.com", "douyinvod.com", "bytecdn.cn", "bytecdn.com", "byteimg.com", "ibytedtos.com", "pstatp.com", "amemv.com", "volces.com"].contains { host == $0 || host.hasSuffix("." + $0) }
+        return ["douyincdn.com", "douyinvod.com", "douyinpic.com", "bytecdn.cn", "bytecdn.com", "byteimg.com", "ibytedtos.com", "pstatp.com", "amemv.com", "volces.com"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
     /// 汽水整轨回退用：url_player_info 指向的火山引擎 VOD GetPlayInfo 签名接口域名。
     /// 平行参考安卓 qishui-api.js 直接请求该地址；iOS 保留白名单约束，只放行字节/火山 API 域名。
@@ -60,6 +60,20 @@ enum QishuiCatalogContract {
             if let s = value as? String, let url = URL(string: s), allowedMedia(url) { return s }
             if let list = value as? [Any] { return list.map { read($0, depth + 1) }.first { !$0.isEmpty } ?? "" }
             if let node = value as? [String: Any] {
+                // 汽水封面常为 {urls: ["https://…/img/"], uri: "tos-cn-…"}：urls 只是前缀，
+                // 需拼上 uri 与尺寸模板。对照桌面 qishui-api.js qishuiImageUrl(value, '~c5_300x300.jpg')。
+                let uri = ["uri", "url_key", "image_uri", "cover_uri"].map { text(node[$0]) }.first { !$0.isEmpty } ?? ""
+                if !uri.isEmpty {
+                    func prefix(_ value: Any?) -> String {
+                        if let s = value as? String { return s }
+                        if let list = value as? [Any] { return list.compactMap { $0 as? String }.first { $0.hasPrefix("http") } ?? "" }
+                        return ""
+                    }
+                    let base = ["urls", "url_list", "urlList", "url", "main_url"].map { prefix(node[$0]) }.first { $0.hasPrefix("http") } ?? ""
+                    var composed = base.isEmpty ? (uri.hasPrefix("http") ? uri : "") : (base.contains(uri) ? base : base + uri)
+                    if !composed.isEmpty, !composed.contains("~") { composed += "~c5_300x300.jpg" }
+                    if let url = URL(string: composed), allowedMedia(url) { return composed }
+                }
                 let keys = ["urls", "url_list", "urlList", "url", "main_url", "cover_url", "image_url"]
                 for key in keys { let result = read(node[key], depth + 1); if !result.isEmpty { return result } }
             }
