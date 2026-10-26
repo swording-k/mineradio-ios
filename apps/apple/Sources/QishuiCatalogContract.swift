@@ -23,6 +23,15 @@ enum QishuiCatalogContract {
               url.port == nil || url.port == 443 || url.port == 80 else { return false }
         return ["douyincdn.com", "douyinvod.com", "bytecdn.cn", "bytecdn.com", "byteimg.com", "ibytedtos.com", "pstatp.com", "amemv.com", "volces.com"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
+    /// 汽水整轨回退用：url_player_info 指向的火山引擎 VOD GetPlayInfo 签名接口域名。
+    /// 平行参考安卓 qishui-api.js 直接请求该地址；iOS 保留白名单约束，只放行字节/火山 API 域名。
+    static func allowedPlayerInfo(_ url: URL) -> Bool {
+        guard url.scheme == "https", let host = url.host?.lowercased(), url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443 else { return false }
+        let hosts = ["volcengineapi.com", "volces.com", "douyin.com", "douyincdn.com", "douyinvod.com",
+                     "bytedance.com", "byteoversea.com", "ibytedtos.com", "qishui.com"]
+        return hosts.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
     static func check(_ json: [String: Any]) throws {
         guard let raw = json["status_code"] ?? json["error_code"] else { return }
         guard let code = Int(text(raw)) else { throw QishuiCatalogFailure.invalidResponse }

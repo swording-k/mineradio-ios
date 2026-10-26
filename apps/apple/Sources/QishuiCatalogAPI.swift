@@ -293,8 +293,10 @@ actor QishuiCatalogAPI {
             NSLog("[QISHUI-DIAG] 失败：url_player_info 缺失或非 https")
             throw QishuiCatalogFailure.invalidResponse
         }
-        if !QishuiCatalogContract.allowedMedia(url) {
-            NSLog("[QISHUI-DIAG] 失败：host 不在 allowedMedia 白名单 -> %@", url.host ?? "nil")
+        // url_player_info 是火山引擎 VOD GetPlayInfo 签名接口地址（非媒体 CDN），
+        // 用单独的 API 域名白名单校验，而不是 allowedMedia（后者只认 CDN 域名）。
+        if !QishuiCatalogContract.allowedPlayerInfo(url) {
+            NSLog("[QISHUI-DIAG] 失败：host 不在 PlayerInfo 白名单 -> %@", url.host ?? "nil")
             throw QishuiCatalogFailure.invalidResponse
         }
         let stream = try await playerInfo(url, expectedID: id, membership: membership, seoTrack: track)
@@ -492,8 +494,8 @@ actor QishuiCatalogTransport: QishuiCatalogRequesting {
         return try await send(request)
     }
     func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
-        // PlayerInfo（VOD GetPlayInfo 签名地址）走媒体域名白名单，不复用 allowedAPI 的 API 契约。
-        guard url.scheme == "https", QishuiCatalogContract.allowedMedia(url) else { throw QishuiCatalogFailure.invalidRequest }
+        // PlayerInfo（VOD GetPlayInfo 签名地址）走 PlayerInfo API 域名白名单，不复用 allowedAPI 的 API 契约。
+        guard url.scheme == "https", QishuiCatalogContract.allowedPlayerInfo(url) else { throw QishuiCatalogFailure.invalidRequest }
         var request = URLRequest(url: url); request.httpMethod = "GET"
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await send(request)
