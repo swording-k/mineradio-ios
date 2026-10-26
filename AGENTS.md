@@ -2,7 +2,7 @@
 
 - 本目录是 iOS / iPad 独立本地仓库，2026-10-26 从 Apple 开发工作目录复制，保留提交历史和当时未提交的开发内容。
 - 后续 iOS / iPad 开发以 `/Users/baojian/Desktop/Mineradio-iOS` 为入口；主客户端位于 `apps/apple`，共享网页资产与打包脚本仍保留在仓库根目录。
-- 用户要求以后以 GitHub 私有仓库管理。本仓库目前没有 remote；仅连接用户指定的私有仓库，不推到公开社区版或原上游。保留现有 LICENSE 与第三方署名。
+- 用户是 iOS / iPad 客户端主开发人；本仓库由 `swording-k` 账号以 GitHub 私有仓库 `swording-k/mineradio-ios` 管理，origin 连接该仓库，不推到公开社区版或原上游。保留现有 LICENSE 与第三方署名。
 - 构建以 `apps/apple/README.md` 和 `apps/apple/project.yml` 为准。根目录 README 及部分下方规则继承自桌面仓库，应结合本节理解；桌面发布状态不代表 iOS 验收状态。
 - 原工作目录 `/Users/baojian/.codex/worktrees/ipad-client/Mineradio` 保留作迁移回退。不要在两个目录交替开发；旧目录后续修改不会自动同步到本仓库。
 

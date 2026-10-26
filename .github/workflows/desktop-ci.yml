@@ -1,17 +1,7 @@
 name: Desktop CI
 
 on:
-  pull_request:
-    paths-ignore: ['website/**', 'docs/**', '*.md', '.github/ISSUE_TEMPLATE/**']
-  push:
-    branches: [main]
-    paths-ignore: ['website/**', 'docs/**', '*.md', '.github/ISSUE_TEMPLATE/**']
   workflow_dispatch:
-    inputs:
-      build_candidates:
-        description: 'Build unsigned QA installers as workflow artifacts (never publish)'
-        type: boolean
-        default: false
 
 permissions:
   contents: read

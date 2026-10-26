@@ -5,10 +5,10 @@
 - 路径：`/Users/baojian/Desktop/Mineradio-iOS`
 - 客户端源码与构建说明：`apps/apple/README.md`
 - XcodeGen 配置：`apps/apple/project.yml`
-- 当前基线：`dfb2e73`，分支 `codex/apple-team-alignment`，包含迁移时未提交的修改和新增文件。
+- 历史基线：`dfb2e73`；迁移及开发中改动已保存为 `7b28e20`。以 `main` 为共享主分支，后续按任务建立短期分支。
 - 保留全部已有历史，以及客户端依赖的根目录网页资产与构建脚本。
 - 未复制可重新生成的依赖、构建缓存和安装产物；开发环境按客户端 README 准备。
-- 目前没有远程地址。以后连接 GitHub 私有仓库；本次没有创建或上传远程仓库。
+- 远程：`https://github.com/swording-k/mineradio-ios`，Private。用户 `swording-k` 为主开发人与仓库所有者。
 - 原工作目录保留作回退，后续以本桌面目录为开发入口。
 
 同系列仓库：
@@ -17,12 +17,12 @@
 | --- | --- | --- |
 | `/Users/baojian/Desktop/Mineradio` | 开源社区版 / 原上游参考 | `swording-k/Mineradio`，上游 `XxHuberrr/Mineradio-paused` |
 | `/Users/baojian/Desktop/Mineradio-mac-team` | 团队 Mac 私有版 | `chyzsnb-commits/mr` |
-| `/Users/baojian/Desktop/Mineradio-iOS` | iPhone / iPad 开发 | 尚未连接，未来使用私有仓库 |
+| `/Users/baojian/Desktop/Mineradio-iOS` | iPhone / iPad 开发 | `swording-k/mineradio-ios`（Private） |
 
-## 远程备份准备（2026-10-26）
+## 远程协作（2026-10-26）
 
-- 建议远程名称：`chyzsnb-commits/mineradio-ios`，设为 Private。该名称仅为建议，尚未创建。
-- 当前 CLI 与 GitHub 连接器均登录 `swording-k`。该账号对团队 `mr` 有 WRITE 权限，但不能在另一位个人用户账号下创建新仓库。
-- 仓库主人创建空私有仓库（不初始化 README / LICENSE / .gitignore），邀请 `swording-k` 并授予写权限后，再配置本目录的 origin 并上传。
-- 本地保存一次迁移与开发中快照；快照包含尚未验收的改动，不代表新版本已测试通过。原工作目录的未提交状态保留。
-- 上传前已对当前源码进行常见私钥和访问令牌格式检查，未命中；运行数据、账号文件及构建产物仍按现有忽略规则排除。
+- 用户已明确决定使用自己的 `swording-k` 账号创建私有仓库，不再等待其他个人账号创建。
+- 邀请协作者可在 GitHub 仓库 Settings → Collaborators 中办理；本次没有邀请他人。
+- 以 `main` 为默认分支，并保留 `codex/apple-team-alignment` 开发快照分支与全部祖先历史；旧桌面版本标签未作为 iOS 标签上传。
+- 继承的 `.github/workflows` 是桌面构建及网站发布流程，已调整为手动触发，避免 iOS 仓库自动执行不相关发布。
+- 本次为源码备份，含开发中未验收改动；没有声称通过新的功能测试，也未发布 TestFlight 或安装包。

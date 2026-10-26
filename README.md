@@ -1,3 +1,16 @@
+# Mineradio iOS / iPad
+
+由 **swording-k 主导开发**的 iPhone / iPad 客户端，使用私有仓库协作管理。
+
+- 客户端源码、构建步骤与验收边界：[apps/apple/README.md](apps/apple/README.md)
+- 工作目录与仓库关系：[IOS_WORKSPACE.md](IOS_WORKSPACE.md)
+- 原生客户端：`apps/apple/Sources`；网页适配：`apps/apple/Web`；构建配置：`apps/apple/project.yml`。
+- 根目录保留客户端依赖的网页资源与历史代码。以下为继承的桌面项目介绍，不代表当前 iOS 功能已全部验收。
+- 新协作者从 `main` 创建短期分支，通过 PR 合并；账号数据、签名凭据和构建产物不入库。私有仓库仅向受邀协作者开放。
+- 继承的桌面构建和网站发布流程暂不自动运行；iOS 自动检查另行配置。保留原 LICENSE 和第三方署名。
+
+---
+
 # Mineradio
 
 > **swording-k 社区分支**：本仓库在最新公开主线与原作者 Mac 适配源码基础上继续开发。产品名为 Mineradio，本分支由 swording-k 独立维护。原作者与第三方署名、GPL-3.0-only 许可证保持有效。
