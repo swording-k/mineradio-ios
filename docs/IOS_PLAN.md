@@ -44,14 +44,21 @@
 
 **根因（已核实，分两层，务必区分）**：
 1. **登录层**：扫码登录会遇到字节的安全验证挑战（`error_code 2046`）与接口限流（截图「汽水确认接口限流，15 秒后自动重试」）。iOS 端 `QishuiSecurityFlow.swift` + `OfficialAccountLogin.swift` 已处理 MFA 挑战流程。
-2. **播放层（真正命门）**：汽水 VIP 歌曲是 CENC/AES 加密 MP4，播放必须：
-   - 拿 `play_auth` / `spade_a`（整轨签名授权）；
-   - 该授权依赖字节签名 SDK `bdms.js`（桌面 `bdms.node`），签名按 `device_platform`（`windows`/`mac`）生成；
-   - 拿到后按 `SodaCrypto`/`track-decryptor.js` 逻辑解密音频。
-   - iOS 现状：`QishuiSecurityFlow.swift` **只做登录挑战，完全没碰整轨签名**。iOS README 明确写「Mac-only `bdms.node` 整轨签名无法简单在 iOS 执行」。
-   - **平台签名错配**：音源默认 `device_platform: 'windows'`。负责人经验：当年在 Mac 上把 Windows 签名改成 Mac 签名后即可播放——证明签名的平台标识是播放成败的关键变量。
+2. **播放层（真正命门，2026-10-26 核实后修正）**：
 
-**安卓的解法（iOS 可直接借鉴）**：安卓把 `bdms.js`（纯 JS、混淆的字节签名 SDK）放进内置 libnode 里原样执行，不去原生重写它。iOS 对应方案：用系统自带的 **JavaScriptCore** 执行 `bdms.js` 产出签名，Swift 侧负责网络、平台标识、解密与播放。
+   > ⚠ **重大修正**：此前假设「iOS 汽水播不了 = 整轨签名/平台标识没做对」。深入对照安卓源码后发现**不准确**。真实根因如下。
+
+   - **汽水官方已把 `/luna/pc/track_v2`（PC 整轨接口）对第三方接入关闭**（返回 200 空 body）。安卓源码明确注释：`// 汽水官方已将 /luna/pc/track_v2 对第三方接入关闭`、`// 回退到免登录的 seo_track 接口`。
+   - 这意味着：**无论把 `device_platform` 设成 windows 还是 mac、无论签名对不对，走 `track_v2` 这条路现在都拿不到整轨**。负责人当年在 Mac 上「改签名就能播」，是那个时间点的情况；之后官方封了这条路。
+   - **安卓现在能播，靠的是回退链路**：
+     1. `track_v2` 失败 → 回退 `seo_track`（免登录 SEO 接口）；
+     2. `seo_track` 返回 `track_player.url_player_info`，这是一个 **VOD GetPlayInfo 签名地址**；
+     3. 用它调 `PlayerInfo` 换取**可直接播放的标准 M4A 音源**（带 auth）；
+     4. 配合会员权益判定区分 VIP 整轨 / 试听。
+   - **iOS 现状缺口**：`QishuiCatalogAPI.swift` 的 `/api/qishui/song/url` 在 `track_v2` 失败后，直接降级到 `publicTrack`（公开试听），**没有 `seo_track → url_player_info → PlayerInfo` 这条回退链**。这才是 iOS「能登录但只能试听 / 播不了」的真正原因——**不是签名问题，是缺了 seo_track 回退播放链路**。
+   - 登录层的 `bdms` 签名 iOS 其实已经跑通：`QishuiAuthRuntime.swift` 已用 WKWebView 加载 `security_host.html` + `sdk-glue.js` + `bdms.js`，等 `window.bdms` 就绪。所以「用 WebView 跑 bdms」这条已验证可行，不是本阶段难点。
+
+**iOS 修复方向（照搬安卓已验证的链路）**：在 `QishuiCatalogAPI` 的播放解析里，补上 `track_v2` 失败后的 `seo_track` 回退：取 `track_player.url_player_info` → 请求 PlayerInfo → 得到可播 M4A → 带权益判定返回。对照安卓 `qishui-api.js` 的 `resolveQishuiSeoPlayback` / `handleQishuiSongUrl` / `fetchQishuiSeoTrack` / `fetchQishuiPlayerInfo`。
 
 ### P1 — 交互体验（手机端按钮位置 / 可用性差）
 
@@ -109,16 +116,16 @@
 
 分阶段原则：每阶段能独立交付、能单独验收、不把未验收改动混进上线。
 
-### 阶段 A：汽水播放可行性验证（P0，先打通命门）
+### 阶段 A：汽水播放修复 —— 补 seo_track 回退链路（P0，先打通命门）
 
-**目标**：证明「JavaScriptCore 跑 `bdms.js` 产出有效整轨签名 → 拿到 play_auth → 解密 → 可播放」这条链路走得通。
+**目标**：照搬安卓已验证的回退链路，让 iOS 在 `track_v2` 被官方关闭时，仍能通过 `seo_track` 拿到可播 M4A。
 
-- A1 在 iOS 工程里起一个最小 `JSContext`，加载安卓 `qishui-auth-v6/bdms.js`，喂入与桌面/安卓一致的入参，产出签名并比对。
-- A2 用签名请求 `track_v2` 拿 `play_auth`/`spade_a`，确认平台标识（windows/mac）哪个可播。
-- A3 Swift 侧实现 CENC/AES 解密（移植 `SodaCrypto.kt` / `track-decryptor.js` 逻辑），解出可播 MP4/FLAC。
-- A4 用 AVFoundation 播放解密后音频，验证真实账号单曲可播。
+- A1 在 `QishuiCatalogAPI` 新增 `seo_track` 请求：对照安卓 `fetchQishuiSeoTrack`，取 `track_player.url_player_info`。
+- A2 实现 PlayerInfo 换流：对照安卓 `fetchQishuiPlayerInfo`，用 `url_player_info`（VOD GetPlayInfo 签名地址）换取可播 M4A（含 auth），注意 host/Referer 白名单与大小上限。
+- A3 把 `/api/qishui/song/url` 的降级逻辑从「直接试听」改为「track_v2 失败 → seo_track 回退 → 仍失败才试听」，并接入会员权益判定（对照 `qishuiResolveTrial` / `fetchQishuiPlaybackMembership`），避免 VIP 被误标试听。
+- A4 单元/fixture 覆盖：track_v2 空响应 → 走 seo_track 的分支；非 VIP 试听；缺登录态拒绝。
 
-**验收**：真实汽水账号、至少一首 VIP 歌曲端到端可播（需真机 + 真账号，分开记录证据）。
+**验收**：真实汽水账号、至少一首歌经 seo_track 链路可播（需真机 + 真账号，分开记录证据）。CENC/AES 解密（`SodaCrypto`）仅在 seo_track 返回加密音源时才需要，视实测情况决定是否纳入本阶段。
 
 ### 阶段 B：资源占用与闪退治理（P0）
 
