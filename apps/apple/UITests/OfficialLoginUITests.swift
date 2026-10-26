@@ -30,6 +30,29 @@ final class OfficialLoginUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["音频链路通过"].waitForExistence(timeout: 25))
         app.terminate()
     }
+    @MainActor func testSpeedAudioClockAndAnalysedSignal() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--apple-audio-smoke"]
+        app.launch()
+        defer { app.terminate() }
+        let button = app.buttons["播放1.5倍测试音"]
+        XCTAssertTrue(button.waitForExistence(timeout: 45))
+        button.tap()
+        XCTAssertTrue(app.staticTexts["音频链路通过"].waitForExistence(timeout: 25))
+    }
+    @MainActor func testPausedSchedulerAndTouchWake() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--apple-power-smoke"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["检查暂停调度"].waitForExistence(timeout: 45))
+        app.buttons["检查暂停调度"].tap()
+        let passed = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "暂停调度通过：")).firstMatch
+        XCTAssertTrue(passed.waitForExistence(timeout: 25))
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "foreground-paused-frame-count"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.buttons["唤醒播放界面"].tap()
+        XCTAssertTrue(app.staticTexts["触控唤醒通过"].waitForExistence(timeout: 5))
+    }
     @MainActor func testQQOfficialLoginSheetAndCancel() throws { try verifyOfficialSheet("qq", title: "QQ 音乐官方登录") }
     @MainActor func testKugouOfficialLoginSheetAndCancel() throws { try verifyOfficialSheet("kugou", title: "酷狗音乐官方登录") }
 }

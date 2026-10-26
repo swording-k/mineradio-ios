@@ -44,6 +44,9 @@ struct OriginalPlayerView: UIViewRepresentable {
             config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--apple-power-smoke") {
+            config.userContentController.addUserScript(WKUserScript(source: ApplePowerSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
         if ProcessInfo.processInfo.arguments.contains("--apple-audio-smoke") {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioProbe")
             config.userContentController.addUserScript(WKUserScript(source: ApplePlaybackSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -128,7 +131,7 @@ struct OriginalPlayerView: UIViewRepresentable {
                 return
             }
             guard message.name == "appleAccountLogin", let input = message.body as? [String: Any],
-                  let provider = input["provider"] as? String, OfficialLoginPolicy.entry(provider) != nil,
+                  let provider = input["provider"] as? String, provider == "spotify" || OfficialLoginPolicy.entry(provider) != nil,
                   let open = parent.openAccount else { replyHandler(nil, "Unsupported login request"); return }
             Task { @MainActor in replyHandler(await open(provider), nil) }
         }

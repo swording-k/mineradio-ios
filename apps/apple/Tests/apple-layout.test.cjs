@@ -135,3 +135,28 @@ test('phone compatibility mouse movement cannot drive the desktop controls timer
   f.context.updateControlsAutoHideFromPointer(100,800);
   assert.equal(calls,0);
 });
+test('touch volume popup rejects desktop leave/blur timers after slider interaction',()=>{
+  let volume, timer;
+  const f=touchFixture((context,elements,node)=>{
+    volume=elements['volume-control']=node();
+    timer={}; context.volumeCloseTimer=timer;
+  });
+  for(const name of ['mouseleave','blur']){
+    let stopped=false;f.context.volumeCloseTimer=timer;
+    volume.emit(name,{stopImmediatePropagation(){stopped=true;}});
+    assert(stopped,'Touch leave/blur must not reach the desktop 520ms close handler');
+    assert.equal(f.context.volumeCloseTimer,null);assert(timer.cancelled);
+  }
+});
+test('a touch near the hidden FX button cannot open its hover bridge; explicit DIY and guide still work',()=>{
+  let calls=0;
+  const f=touchFixture((context)=>{
+    context.setPeek=()=>calls++;
+    context.toggleFxPanel=()=>context.setPeek({},true,'fx');
+    context.visualGuideState={manual:false};context.visualGuideActive=false;
+  });
+  f.context.setPeek({},true,'fx');assert.equal(calls,0);
+  f.context.setPeek({},false,'fx');assert.equal(calls,0);
+  f.context.toggleFxPanel();assert.equal(calls,1);
+  f.context.visualGuideActive=true;f.context.setPeek({},true,'fx');assert.equal(calls,2);
+});

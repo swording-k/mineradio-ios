@@ -22,6 +22,13 @@ import Foundation
         let endpoint = origin.appendingPathComponent("api/login/status")
         let (_, denied) = try await URLSession.shared.data(from: endpoint)
         precondition((denied as? HTTPURLResponse)?.statusCode == 403)
+        var spotify = URLRequest(url: origin.appendingPathComponent("api/spotify/status"))
+        let (_, spotifyDenied) = try await URLSession.shared.data(for: spotify)
+        precondition((spotifyDenied as? HTTPURLResponse)?.statusCode == 403)
+        spotify.setValue(service.sessionToken, forHTTPHeaderField: "X-Mineradio-Session")
+        let (spotifyData, _) = try await URLSession.shared.data(for: spotify)
+        let spotifyStatus = try JSONSerialization.jsonObject(with: spotifyData) as! [String: Any]
+        precondition(spotifyStatus["provider"] as? String == "spotify" && spotifyStatus["oauthConfigured"] as? Bool == false)
         var unsupported = URLRequest(url: origin.appendingPathComponent("api/unsupported-fixture"))
         unsupported.setValue(service.sessionToken, forHTTPHeaderField: "X-Mineradio-Session")
         let (json, allowed) = try await URLSession.shared.data(for: unsupported)

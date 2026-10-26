@@ -25,6 +25,16 @@ final class PhoneLayoutUITests: XCTestCase {
         volume.tap()
         XCTAssertTrue(app.sliders["音量"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.sliders["音量"].isHittable)
+        XCTAssertTrue(app.sliders["播放速度"].isHittable)
+        let speed = app.sliders["播放速度"]
+        XCTAssertGreaterThanOrEqual(speed.frame.height, 44)
+        // WebKit exposes no AX scrubber endpoints to XCTest. Drag the real
+        // slider rather than relying on the unsupported native-slider action.
+        speed.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5)).press(forDuration: 0.05, thenDragTo: speed.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
+        XCTAssertNotEqual(speed.value as? String, "1 倍")
+        XCTAssertTrue(app.buttons["恢复正常播放速度"].isHittable)
+        app.buttons["恢复正常播放速度"].tap()
+        XCTAssertEqual(speed.value as? String, "1 倍")
         inspect.tap()
         XCTAssertTrue(app.staticTexts["布局检查通过"].waitForExistence(timeout: 10))
         volume.tap()
@@ -75,17 +85,30 @@ final class PhoneLayoutUITests: XCTestCase {
         XCTAssertTrue(more.waitForExistence(timeout: 45))
         // The handle is under the initially visible bar. Exercise the user's
         // actual restore flow after the bar folds, rather than tapping through it.
-        let hidden = NSPredicate(format: "hittable == false")
-        expectation(for: hidden, evaluatedWith: more)
-        waitForExpectations(timeout: 12)
+        XCTAssertTrue(app.staticTexts["控制条已收起"].waitForExistence(timeout: 12))
         XCTAssertTrue(app.buttons["展开播放控制条"].isHittable)
         app.buttons["展开播放控制条"].tap()
         // Measure the 1.5-second dwell and actual play-button hit test in the
         // WebKit clock, avoiding slow accessibility queries consuming idle time.
         XCTAssertTrue(app.staticTexts["控制条持续可用"].waitForExistence(timeout: 12))
-        expectation(for: hidden, evaluatedWith: more)
-        waitForExpectations(timeout: 12)
+        XCTAssertTrue(app.staticTexts["控制条已收起"].waitForExistence(timeout: 12))
         app.buttons["展开播放控制条"].tap()
         XCTAssertTrue(more.isHittable)
+    }
+    @MainActor func testSpotifyEntryExplainsMissingTeamConfiguration() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--apple-layout-smoke"]
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["检查 Spotify 入口"].waitForExistence(timeout: 45))
+        app.buttons["检查 Spotify 入口"].tap()
+        XCTAssertTrue(app.buttons["Spotify"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["团队尚未配置 Spotify 授权应用；无需用户自行注册。"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["连接 Spotify"].isEnabled)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "spotify-configuration-gate"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 }

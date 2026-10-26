@@ -19,6 +19,14 @@
     transform: translateY(calc(100% + 48px)) !important; visibility: hidden;
   }
   body.apple-client.apple-controls-folded #bottom-handle { opacity: .7; pointer-events: auto; z-index: 1300; }
+  body.apple-client:has(#volume-control.open, #quality-control.open, #lyric-timing-control.open) #fx-fab {
+    visibility: hidden !important; pointer-events: none !important;
+  }
+
+  @media (hover: none) {
+    body.apple-client #volume-control:not(.open) .volume-popover { opacity: 0 !important; pointer-events: none !important; visibility: hidden; }
+    body.apple-client #volume-control::before { display: none !important; }
+  }
 
   @media (max-width: 767px), (max-height: 500px) and (max-width: 1024px) {
     body.apple-client {
@@ -214,6 +222,21 @@
   // WebKit emits compatibility mouse movement after a finger tap. A desktop
   // left-edge hover must not open a second panel over the user's touch target.
   var hoverPointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  if (typeof setPeek === 'function' && typeof toggleFxPanel === 'function') {
+    var originalPeek = setPeek, originalFxToggle = toggleFxPanel, explicitFxToggle = false;
+    setPeek = function (element, on, key) {
+      // Desktop tests a geometric bridge around the FAB, even when CSS hides
+      // it. Compatibility mousemove after a touch must not open/close that UI.
+      var guided = typeof visualGuideActive !== 'undefined' && visualGuideActive;
+      if (key === 'fx' && !hoverPointer.matches && !explicitFxToggle && !guided) return;
+      return originalPeek.apply(this, arguments);
+    };
+    toggleFxPanel = function () {
+      explicitFxToggle = true;
+      try { return originalFxToggle.apply(this, arguments); }
+      finally { explicitFxToggle = false; }
+    };
+  }
   if (typeof isPlaylistEdgeTrigger === 'function') {
     var originalPlaylistEdgeTrigger = isPlaylistEdgeTrigger;
     isPlaylistEdgeTrigger = function () {
@@ -357,6 +380,21 @@
     if (document.body) document.body.classList.add('apple-controls-folded');
   }
   var down = null, suppressClickUntil = 0;
+  var volumeWrap = document.getElementById('volume-control');
+  if (volumeWrap) {
+    // Desktop closes this surface 520ms after mouseleave or slider blur.
+    // iOS synthesizes those events between taps, while focus/hover CSS can
+    // leave an invisible popover hit layer behind. Touch uses explicit open /
+    // outside-tap close instead of a mouse journey between the small controls.
+    ['mouseenter','mouseleave','blur'].forEach(function (name) {
+      volumeWrap.addEventListener(name, function (event) {
+        if (hoverPointer.matches) return;
+        if (typeof volumeCloseTimer !== 'undefined' && volumeCloseTimer) clearTimeout(volumeCloseTimer);
+        if (typeof volumeCloseTimer !== 'undefined') volumeCloseTimer = null;
+        event.stopImmediatePropagation();
+      }, true);
+    });
+  }
   if (bar) {
     [bar, handle].filter(Boolean).forEach(function (target) {
       target.addEventListener('mouseenter', function (event) {

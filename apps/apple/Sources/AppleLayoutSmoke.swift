@@ -38,7 +38,12 @@ enum AppleLayoutSmoke {
               if (!inside(element) || r.width < 43.9 || r.height < 43.9) failures.push(element.id || 'fullscreen');
             });
             if (!inside(document.getElementById('bottom-bar'))) failures.push('bar');
-            if (document.getElementById('volume-control').classList.contains('open') && !inside(document.querySelector('.volume-popover'))) failures.push('volume');
+            if (document.getElementById('volume-control').classList.contains('open')) {
+              if (!inside(document.querySelector('.volume-popover'))) failures.push('volume');
+              const reset=document.getElementById('apple-speed-reset'), r=reset.getBoundingClientRect();
+              const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+              if (!hit || !reset.contains(hit)) failures.push('speed-hit-target');
+            }
             status.textContent = failures.length ? '布局检查失败：'+failures.join(',') : '布局检查通过';
           }, 400);
         };
@@ -51,6 +56,15 @@ enum AppleLayoutSmoke {
         const visibility = document.createElement('p');
         visibility.style.cssText='position:fixed;top:330px;left:16px;z-index:2147483647;background:white;color:black;pointer-events:none';
         const handle=document.getElementById('bottom-handle');
+        const foldState=document.createElement('p');
+        foldState.style.cssText='position:fixed;top:440px;left:16px;z-index:2147483647;background:white;color:black;pointer-events:none';
+        setInterval(()=>{
+          if(!window.__appleSmokeAutoHide)return;
+          const bar=document.getElementById('bottom-bar'), r=handle.getBoundingClientRect();
+          const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+          const folded=bar.classList.contains('apple-controls-collapsed') || bar.classList.contains('soft-hidden') || !bar.classList.contains('visible');
+          foldState.textContent=folded && hit && handle.contains(hit) ? '控制条已收起' : '控制条已展开';
+        },100);
         handle.addEventListener('pointerup', () => {
           visibility.textContent='正在检查持续展示';
           setTimeout(() => {
@@ -59,7 +73,13 @@ enum AppleLayoutSmoke {
             visibility.textContent=bar.classList.contains('apple-touch-controls-open') && Number(getComputedStyle(bar).opacity)>0.5 && hit && hit.closest('#play-btn') ? '控制条持续可用' : '控制条持续展示失败';
           },1500);
         });
-        document.body.append(button,status,zoom,visibility);
+        const spotify=document.createElement('button'); spotify.textContent='检查 Spotify 入口';
+        spotify.style.cssText='position:fixed;top:380px;left:16px;z-index:2147483647;min-height:44px;background:white;color:black';
+        spotify.onclick=()=>{
+          document.getElementById('login-modal').classList.add('show');
+          setLoginEasterEggMode(false); setLoginProvider('spotify',true); setLoginAuthDrawerOpen(true);
+        };
+        document.body.append(button,status,zoom,visibility,spotify,foldState);
         if (controlsAutoHide) holdBottomControlsVisible(4000);
         } catch (error) {
           const failed = document.createElement('p');

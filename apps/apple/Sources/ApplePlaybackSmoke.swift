@@ -32,7 +32,8 @@ enum ApplePlaybackSmoke {
             const check = setInterval(() => {
               const samples = new Uint8Array(analyser.fftSize); analyser.getByteTimeDomainData(samples);
               const signal = samples.some(value => Math.abs(value-128)>3);
-              const passed = audioCtx.state === 'running' && audio.currentTime > 0.05 && signal;
+              const expectedRate=window.__mineradioAppleSpeed ? window.__mineradioAppleSpeed.getRate() : 1;
+              const passed = audioCtx.state === 'running' && audio.currentTime > 0.05 && signal && Math.abs(audio.playbackRate-expectedRate)<0.01 && audio.preservesPitch;
               if (!passed && Date.now() < deadline) return;
               clearInterval(check);
               report({state:audioCtx.state,mediaTime:audio.currentTime,signal});
@@ -41,7 +42,12 @@ enum ApplePlaybackSmoke {
             }, 100);
           } catch(error) { report({error:phase + ':' + error.name + ':' + error.message}); status.textContent = '音频链路失败：' + error.name; }
         };
-        document.body.append(button,status);
+        const faster=document.createElement('button'); faster.textContent='播放1.5倍测试音';
+        faster.style.cssText='position:fixed;top:200px;left:20px;z-index:2147483647;min-height:44px;background:white;color:black';
+        faster.onclick=()=>{
+          const slider=document.getElementById('apple-speed-slider'); slider.value='1.5'; slider.dispatchEvent(new Event('input',{bubbles:true})); button.click();
+        };
+        document.body.append(button,status,faster);
         if (window.__mineradioAppleSetAuthPresentation) window.__mineradioAppleSetAuthPresentation(true);
       }, 50);
     })();

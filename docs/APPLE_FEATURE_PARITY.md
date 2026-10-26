@@ -40,7 +40,7 @@ Local logs: `apps/apple/build/TestResults/feature-parity-20261024/`. The device 
 | Kugou | Native login/library/search/play/lyrics plus new FM recommendations, bounded liked-state checks, heart add/remove and playlist-add routes. Signed-payload/denial fixtures pass; real-account reads/writes and playback remain unaccepted. |
 | Qishui | Native QR/MFA/library/feed/search/play/lyrics plus new heart check/toggle, playlist/album collection, playlist-add and comments read/post routes. Method/body/session/denial/cache fixtures pass; real-account writes and full playback remain unaccepted. |
 | Local functionality / OS services | Weather, listening reports, local-file import, AutoMix/cuefield, beat-cache and camera gesture paths require individual implementation/validation; desktop wallpaper/window APIs need iOS-specific decisions. |
-| Spotify | Removed in paused upstream, active in the separate Mac distribution. Not implemented in this Apple target. Requires an app-owned Client ID/registered callback and actual OAuth acceptance; its metadata support must not be represented as direct Spotify audio. |
+| Spotify | Apple-only native OAuth/Keychain/API and fifth-provider UI added locally on 2026-10-26. Team Client ID / callback and live account acceptance remain open. Metadata uses authorized source matching; no direct Spotify audio. See [setup and acceptance](APPLE_SPOTIFY_SETUP.md). |
 
 Next gate: finish portable feature alignment with the identified Mac line, verify every retained entry in phone/tablet orientations, and perform authorized real-account and sustained device playback checks. Keep issues #14/#15/#16 open.
 

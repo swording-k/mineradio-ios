@@ -38,6 +38,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: NV5R86Q3MS
+        SPOTIFY_CLIENT_ID: ''
     preBuildScripts:
       - name: Bundle original web modules without synchronous XHR
         script: |
@@ -49,7 +50,12 @@ targets:
       properties:
         CFBundleDisplayName: Mineradio
         CFBundleShortVersionString: '0.4.6'
-        CFBundleVersion: '14'
+        CFBundleVersion: '15'
+        MineradioSpotifyClientID: $(SPOTIFY_CLIENT_ID)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.swordingk.mineradio.apple.spotify
+            CFBundleURLSchemes:
+              - com.swordingk.mineradio.apple
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:

@@ -16,6 +16,11 @@ import UniformTypeIdentifiers
     private let qq = QQMusicNativeAPI()
     private let kugou = KugouNativeAPI()
     private let qishuiCatalog = QishuiCatalogAPI()
+    private let spotify = SpotifyNativeAPI()
+    @Published private(set) var spotifyPresented = false
+    #if os(iOS)
+    private let spotifyLogin = SpotifyAccountLogin()
+    #endif
     @Published private(set) var securityWebView: WKWebView?
     private lazy var qishui: QishuiAuthRuntime = {
         let runtime = QishuiAuthRuntime(bridge: Bundle.main.resourceURL?.appendingPathComponent("Web/qishui-xhr-bridge.js"))
@@ -23,6 +28,23 @@ import UniformTypeIdentifiers
         return runtime
     }()
     func cancelSecurity() { qishui.cancelSecurity() }
+    func openSpotify() async -> [String: Any] {
+        #if os(iOS)
+        guard !spotifyPresented else { return ["loggedIn": false, "message": "Spotify 授权窗口已打开。"] }
+        spotifyPresented = true
+        defer { spotifyPresented = false }
+        do {
+            let url = try await spotify.beginAuthorization()
+            let callback = try await spotifyLogin.open(url)
+            return try await spotify.finishAuthorization(callback)
+        } catch {
+            await spotify.cancelAuthorization()
+            return ["loggedIn": false, "message": (error as? SpotifyNativeAPI.Failure)?.localizedDescription ?? "Spotify 授权未完成，可重新连接。"]
+        }
+        #else
+        return ["loggedIn": false, "message": "系统授权需要 iOS 客户端。"]
+        #endif
+    }
     private let resourceRoot: URL?
     private let generatedRoot: URL?
     private var active: [UUID: NWConnection] = [:]
@@ -181,6 +203,7 @@ import UniformTypeIdentifiers
                 if url.path.hasPrefix("/api/qq/") { result = try await qq.handle(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/kugou/") { result = try await kugou.handle(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/qishui/") { result = try await qishuiAPI(url, method: method, body: body) }
+                else if url.path.hasPrefix("/api/spotify/") { result = try await spotify.handle(url, method: method, body: body) }
                 else { result = try await api.handle(url, method: method, body: body) }
                 send(connection, status: 200, type: "application/json", data: try JSONSerialization.data(withJSONObject: result))
             } else {

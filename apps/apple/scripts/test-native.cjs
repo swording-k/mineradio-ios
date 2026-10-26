@@ -15,6 +15,7 @@ const suites = [
   ['NeteaseRoutesTests', netease],
   ['NeteaseFeatureRoutesTests', netease],
   ['OfficialLoginPolicyTests', ['OfficialLoginPolicy']],
+  ['SpotifyNativeTests', ['SpotifyContract','SpotifyNativeAPI']],
   ['QQMusicNativeTests', ['QQMusicNativeAPI']],
   ['QQMusicFeatureTests', ['QQMusicNativeAPI']],
   ['KugouNativeTests', ['KugouContract','KugouTransport','KugouNativeAPI']],
@@ -25,7 +26,7 @@ const suites = [
   ['QishuiFeatureTests', ['QishuiCatalogContract','QishuiCatalogAPI']],
   ['AppleMediaPolicyTests', providers],
   ['MediaStreamTests', [...providers,'NeteaseMediaStream']],
-  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow'])]],
+  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow','SpotifyContract','SpotifyNativeAPI'])]],
 ];
 function run(command, args) {
   const result = spawnSync(command, args, {cwd: root, stdio: 'inherit'});

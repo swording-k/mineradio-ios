@@ -11,8 +11,9 @@ struct PlayerHost: View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
             if let endpoint {
-                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken, accountPresented: officialLogin.ticket != nil || service.securityWebView != nil, openAccount: { provider in
-                    await officialLogin.open(provider) { platform, cookies in try await service.importAccount(platform, cookies: cookies) }
+                OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken, accountPresented: officialLogin.ticket != nil || service.securityWebView != nil || service.spotifyPresented, openAccount: { provider in
+                    if provider == "spotify" { return await service.openSpotify() }
+                    return await officialLogin.open(provider) { platform, cookies in try await service.importAccount(platform, cookies: cookies) }
                 }).id(revision)
                     .ignoresSafeArea(edges: .bottom)
 
