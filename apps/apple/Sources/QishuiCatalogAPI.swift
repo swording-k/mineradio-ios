@@ -5,9 +5,12 @@ import Foundation
 protocol QishuiCatalogRequesting: Actor {
     func request(_ url: URL, headers: [String: String]) async throws -> [String: Any]
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any]
+    /// PlayerInfo（VOD GetPlayInfo 签名地址）专用：按媒体域名白名单校验，不走 allowedAPI。
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any]
 }
 extension QishuiCatalogRequesting {
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] { throw QishuiCatalogFailure.invalidRequest }
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] { throw QishuiCatalogFailure.invalidRequest }
 }
 
 actor QishuiCatalogAPI {
@@ -123,7 +126,12 @@ actor QishuiCatalogAPI {
                 let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
                 if result["playable"] as? Bool == true { return result }
             } catch QishuiCatalogFailure.sessionExpired { return QishuiCatalogContract.disconnected(expired: true).merging(["playable": false]) { _, b in b } }
-            catch { /* Native PC signing is unavailable on iOS. A public audition remains explicit. */ }
+            catch {
+                // 汽水官方已将 /luna/pc/track_v2 对第三方关闭（返回空 body）。
+                // 回退到免登录 seo_track → url_player_info → PlayerInfo，取可直接播放的音源。
+                // 对照安卓 qishui-api.js: resolveQishuiSeoPlayback / fetchQishuiSeoTrack / fetchQishuiPlayerInfo。
+                if let seo = try? await seoPlayback(id, membership: status) { return seo }
+            }
             do { return QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id) }
             catch { return QishuiCatalogContract.playbackUnavailable() }
         default: return QishuiCatalogContract.unsupported()
@@ -264,6 +272,73 @@ actor QishuiCatalogAPI {
         try QishuiCatalogContract.check(json)
         return json
     }
+
+    /// 汽水整轨回退：seo_track → track_player.url_player_info → PlayerInfo → 可播 M4A。
+    /// 平行参考安卓 qishui-api.js: resolveQishuiSeoPlayback / fetchQishuiSeoTrack / fetchQishuiPlayerInfo。
+    /// 仅在已登录时调用；拿到的签名播放地址用于用户自身有权限的内容，不绕过会员/付费。
+    private func seoPlayback(_ id: String, membership: [String: Any]) async throws -> [String: Any] {
+        let seo = try await publicTrack(id)
+        // seo_track 返回里定位 track_player（可能在 data / 顶层 / track 下）。
+        let root = QishuiCatalogContract.data(seo)
+        let track = QishuiCatalogContract.firstDictionary(root["track"], root["seo_track"], seo["track"])
+        let player = QishuiCatalogContract.firstDictionary(root["track_player"], root["trackPlayer"],
+                                                           seo["track_player"], track["track_player"], track["trackPlayer"])
+        let playerInfoURL = QishuiCatalogContract.text(player["url_player_info"] ?? player["URLPlayerInfo"] ?? player["urlPlayerInfo"])
+        guard !playerInfoURL.isEmpty, let url = URL(string: playerInfoURL), url.scheme == "https",
+              QishuiCatalogContract.allowedMedia(url) else {
+            throw QishuiCatalogFailure.invalidResponse
+        }
+        let stream = try await playerInfo(url, expectedID: id, membership: membership, seoTrack: track)
+        return stream
+    }
+
+    /// 请求 url_player_info（VOD GetPlayInfo 签名地址），解析 Result.Data.PlayInfoList 选可播流。
+    private func playerInfo(_ url: URL, expectedID: String, membership: [String: Any], seoTrack: [String: Any]) async throws -> [String: Any] {
+        var headers = ["Accept": "application/json,text/plain,*/*", "User-Agent": "Mineradio Apple", "Referer": "https://api.qishui.com/"]
+        if !cookies.isEmpty {
+            headers["Cookie"] = cookies.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        }
+        let json = try await transport.requestMedia(url, headers: headers)
+        let result = QishuiCatalogContract.firstDictionary(json["Result"], json["result"])
+        let data = QishuiCatalogContract.firstDictionary(result["Data"], result["data"], json["Data"], json["data"])
+        let list = (data["PlayInfoList"] as? [[String: Any]]) ?? (data["playInfoList"] as? [[String: Any]])
+            ?? (data["play_info_list"] as? [[String: Any]]) ?? (json["PlayInfoList"] as? [[String: Any]]) ?? []
+        guard !list.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
+
+        let full = QishuiCatalogContract.seconds(seoTrack["duration_ms"] ?? seoTrack["duration"]
+            ?? (seoTrack["base_info"] as? [String: Any])?["duration_ms"])
+        let membershipKnown = membership["membershipKnown"] as? Bool == true
+        let isVip = membership["isVip"] as? Bool == true
+        let isSvip = membership["isSvip"] as? Bool == true
+
+        // 解析每条流，按码率升序，优先返回账号权限允许的最优可播流。
+        let streams = list.compactMap { QishuiStream(from: $0) }.sorted { $0.bitrate < $1.bitrate }
+        guard !streams.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
+
+        func allowed(_ tier: String) -> Bool {
+            switch tier {
+            case "svip": return membershipKnown && isSvip
+            case "vip": return membershipKnown && isVip
+            default: return true
+            }
+        }
+        // 会员状态已知：选权限内最优流；未知：参照安卓，倾向返回未受限的最优完整流，避免 VIP 被误降级。
+        let playable = membershipKnown
+            ? streams.last(where: { allowed($0.requiredTier) })
+            : (streams.last(where: { $0.requiredTier == "free" }) ?? streams.last)
+        guard let best = playable else {
+            // 有流但权限不足：显式报 VIP/SVIP 边界，不泄露受限 URL。
+            let needSvip = streams.contains { $0.requiredTier == "svip" } && !streams.contains { $0.requiredTier != "svip" }
+            return QishuiCatalogContract.playbackUnavailable(needSvip ? "svip_required" : "vip_required")
+        }
+        let trial = best.duration > 0 && full > 0 && best.duration + 5 < full
+        return ["provider": "qishui", "source": "qishui-seo-player-info",
+                "url": best.url + (best.auth.isEmpty ? "" : "#auth=" + (best.auth.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? best.auth)),
+                "playable": true, "trial": trial, "duration": best.duration, "fullDuration": full,
+                "trialDuration": trial ? best.duration : 0, "level": best.requiredTier == "free" ? "standard" : "higher",
+                "br": best.bitrate, "encrypted": !best.auth.isEmpty,
+                "message": trial ? "此音源为平台返回的试听片段。" : ""]
+    }
     private func library() async throws -> [String: Any] {
         let status = await validateAccount()
         guard status["loggedIn"] as? Bool == true, let userID = status["userId"] as? String else { return status.merging(["playlists": []]) { _, b in b } }
@@ -339,6 +414,41 @@ actor QishuiCatalogAPI {
     }
 }
 
+/// PlayerInfo 返回的单条可播流。字段映射平行参考安卓 qishui-api.js qishuiStreamFromObject。
+struct QishuiStream {
+    let url: String
+    let auth: String
+    let bitrate: Double
+    let duration: Double
+    let quality: String
+    let format: String
+    let requiredTier: String
+
+    init?(from node: [String: Any]) {
+        func str(_ keys: [String]) -> String { keys.map { QishuiCatalogContract.text(node[$0]) }.first { !$0.isEmpty } ?? "" }
+        func num(_ keys: [String]) -> Double { keys.map { Double(QishuiCatalogContract.text(node[$0])) ?? 0 }.first { $0 > 0 } ?? 0 }
+        let link = str(["url", "Url", "URL", "main_url", "MainUrl", "play_url", "PlayUrl", "main_play_url", "MainPlayUrl"])
+        guard let mediaURL = URL(string: link), QishuiCatalogContract.allowedMedia(mediaURL),
+              !["jpg", "jpeg", "png", "webp", "gif"].contains(mediaURL.pathExtension.lowercased()) else { return nil }
+        url = link
+        auth = str(["play_auth", "PlayAuth", "spade_a", "SpadeA"])
+        let rawBitrate = num(["bitrate", "Bitrate", "real_bitrate", "RealBitrate", "br", "BR", "bit_rate", "BitRate"])
+        bitrate = rawBitrate
+        duration = QishuiCatalogContract.seconds(node["duration"] ?? node["Duration"])
+        let q = str(["quality", "Quality", "definition", "Definition", "quality_type", "QualityType"]).lowercased()
+        let f = str(["format", "Format", "vtype", "VType", "file_format", "FileFormat"]).lowercased()
+        quality = q
+        format = f
+        let kbps = rawBitrate > 1000 ? rawBitrate / 1000 : rawBitrate
+        let explicit = str(["requiredTier", "required_tier", "membershipTier", "membership_tier"]).lowercased()
+        let svip = explicit == "svip" || ["svip", "supervip", "hires", "highres", "master", "atmos", "dolby", "spatial"].contains { q.contains($0) }
+        let vip = explicit == "vip" || kbps > 192
+            || ["lossless", "flac", "sq", "highest", "excellent", "higher", "hq", "exhigh", "320"].contains { q.contains($0) }
+            || ["flac", "alac", "wav"].contains(f)
+        requiredTier = svip ? "svip" : (vip ? "vip" : "free")
+    }
+}
+
 enum QishuiCatalogFailure: Error, LocalizedError {
     case invalidRequest, invalidResponse, sessionExpired, identityMissing, sessionChanged, busy
     var errorDescription: String? {
@@ -369,6 +479,13 @@ actor QishuiCatalogTransport: QishuiCatalogRequesting {
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
         guard QishuiCatalogContract.allowedAPI(url), QishuiCatalogContract.writePaths.contains(url.path), body.count <= 65536 else { throw QishuiCatalogFailure.invalidRequest }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.httpBody = body
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        return try await send(request)
+    }
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        // PlayerInfo（VOD GetPlayInfo 签名地址）走媒体域名白名单，不复用 allowedAPI 的 API 契约。
+        guard url.scheme == "https", QishuiCatalogContract.allowedMedia(url) else { throw QishuiCatalogFailure.invalidRequest }
+        var request = URLRequest(url: url); request.httpMethod = "GET"
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await send(request)
     }
