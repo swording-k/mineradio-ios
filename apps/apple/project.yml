@@ -57,6 +57,8 @@ targets:
             CFBundleURLSchemes:
               - com.swordingk.mineradio.apple
         UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
         UIApplicationSupportsIndirectInputEvents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

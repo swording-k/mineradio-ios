@@ -192,3 +192,16 @@
 ## 7. 下一步
 
 从 **阶段 A1** 开始：在 iOS 工程里用 JavaScriptCore 加载安卓 `bdms.js`，验证能否产出有效汽水整轨签名。这是整个汽水播放的命门，也是风险最高的一环，先验证可行性再铺开。
+
+---
+
+## 8. 实施进度（分支 `feat/qishui-signing-poc`）
+
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| A | 汽水 seo_track 回退、PlayerInfo 域名、封面拼接 | 已提交；真机可播 30 秒试听，整轨需官方客户端签名，iOS 暂无正规路径（待 timing 确认安卓插件做法） |
+| B | 真实 deviceMemory → 原版 lowSpec；内存警告逐级降渲染分辨率 + 原版深度缓存裁剪；WebContent 被回收自动恢复 | 已提交；待真机 30 分钟长播验收 |
+| C | 原生播放 UI：`NowPlayingModel` 统一状态；iPhone 原生 SwiftUI 控制条取代网页底部栏；锁屏/控制中心「正在播放」与远程命令；后台音频 | 已提交；待真机验收 |
+| C2 | 音频从 WebView 迁到原生 AVPlayer（需 JS `Audio` 垫片 + 原生 FFT 喂给原版可视化） | 已完成依赖测绘，未实施；风险最高（AutoMix/无缝衔接/每帧频谱桥接），单独分支、默认关闭推进 |
+| D | Spotify | 元数据/歌单可用；官方不提供音频，播放需接入 Spotify iOS SDK + Premium |
+| E | 上线打包 | 待 B/C 真机验收 |

@@ -6,6 +6,9 @@ struct PlayerHost: View {
     @State private var endpoint: URL?
     @State private var failure: String?
     @State private var revision = UUID()
+    @StateObject private var nowPlaying = NowPlayingModel()
+    /// iPhone 使用原生控制条；iPad 保留已验收的原版控制条布局。
+    private let nativeBar = UIDevice.current.userInterfaceIdiom == .phone
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -14,8 +17,21 @@ struct PlayerHost: View {
                 OriginalPlayerView(endpoint: endpoint, failure: $failure, sessionToken: service.sessionToken, accountPresented: officialLogin.ticket != nil || service.securityWebView != nil || service.spotifyPresented, openAccount: { provider in
                     if provider == "spotify" { return await service.openSpotify() }
                     return await officialLogin.open(provider) { platform, cookies in try await service.importAccount(platform, cookies: cookies) }
-                }).id(revision)
+                }, nowPlaying: nowPlaying, nativeControlBar: nativeBar).id(revision)
                     .ignoresSafeArea(edges: .bottom)
+
+                if nativeBar && nowPlaying.showsBar && nowPlaying.barVisible && failure == nil {
+                    VStack {
+                        Spacer()
+                        NativeControlBar(model: nowPlaying)
+                            .padding(.horizontal, 10).padding(.bottom, 4)
+                            .background(GeometryReader { proxy in
+                                Color.clear.onAppear { reportBarHeight(proxy) }
+                                    .onChange(of: proxy.size.height) { _, _ in reportBarHeight(proxy) }
+                            })
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
 
                 if let failure {
                     VStack(spacing: 16) {
@@ -74,6 +90,14 @@ struct PlayerHost: View {
         .onReceive(service.$origin) { origin in
             if let origin { endpoint = origin; failure = nil }
         }
+        .animation(.easeInOut(duration: 0.22), value: nowPlaying.barVisible)
+        .animation(.easeInOut(duration: 0.22), value: nowPlaying.showsBar)
+    }
+
+    /// 把原生控制条占用的高度（含底部安全区）告诉网页，让 DIY 按钮与面板避开它。
+    private func reportBarHeight(_ proxy: GeometryProxy) {
+        let bottomInset = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom ?? 0
+        nowPlaying.send?("barHeight", Double(proxy.size.height + bottomInset + 4))
     }
 
 }

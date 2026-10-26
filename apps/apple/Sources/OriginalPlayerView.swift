@@ -8,6 +8,9 @@ struct OriginalPlayerView: UIViewRepresentable {
     var sessionToken: String? = nil
     var accountPresented = false
     var openAccount: ((String) async -> [String: Any])? = nil
+    /// 原生播放状态中心；iPhone 上同时启用原生控制条。
+    var nowPlaying: NowPlayingModel? = nil
+    var nativeControlBar = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -20,6 +23,13 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDiagnostics")
+        if nowPlaying != nil {
+            config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleNowPlaying")
+            if nativeControlBar {
+                config.userContentController.addUserScript(WKUserScript(source: "window.__mineradioAppleNativeControls = true;",
+                                                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            }
+        }
         config.setURLSchemeHandler(BundledPlayerHandler(), forURLScheme: "mineradio-app")
         if let sessionToken, let tokenJSON = try? JSONSerialization.data(withJSONObject: [sessionToken]),
            let tokenText = String(data: tokenJSON, encoding: .utf8) {
@@ -70,6 +80,11 @@ struct OriginalPlayerView: UIViewRepresentable {
         config.mediaTypesRequiringUserActionForPlayback = [.video]
         let view = WKWebView(frame: .zero, configuration: config)
         context.coordinator.webView = view
+        nowPlaying?.send = { [weak view] name, value in
+            guard let view, let data = try? JSONSerialization.data(withJSONObject: [name, value ?? NSNull()]),
+                  let args = String(data: data, encoding: .utf8) else { return }
+            view.evaluateJavaScript("window.__mineradioAppleCommand && window.__mineradioAppleCommand.apply(null, \(args))", completionHandler: nil)
+        }
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         view.isOpaque = false
@@ -142,6 +157,10 @@ struct OriginalPlayerView: UIViewRepresentable {
             if message.name == "appleDiagnostics", let input = message.body as? [String: Any] {
                 AppleDiagnostics.shared.recordWeb(input)
                 replyHandler(["recorded": true], nil); return
+            }
+            if message.name == "appleNowPlaying", let input = message.body as? [String: Any] {
+                parent.nowPlaying?.receive(input)
+                replyHandler(nil, nil); return
             }
             if message.name == "appleAudioActivate" {
                 Task { @MainActor in

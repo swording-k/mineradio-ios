@@ -443,6 +443,8 @@
     handle.addEventListener('click', unfoldControls, true);
   }
   window.__mineradioAppleRevealControls = function () { if (phone.matches) unfoldControls(); };
+  // 原生控制条的“更多”会临时展开原版完整控制条（音质、音量、歌词校准等）。
+  window.__mineradioAppleUnfoldWebControls = unfoldControls;
   function updateViewport() {
     var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     root.style.setProperty('--apple-visible-height', Math.round(height) + 'px');
