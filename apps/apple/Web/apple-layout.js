@@ -236,6 +236,16 @@
       try { return originalFxToggle.apply(this, arguments); }
       finally { explicitFxToggle = false; }
     };
+    // 原版 #fx-fab 没有 click 处理，桌面靠悬停桥打开。触屏上悬停桥已被屏蔽，
+    // 因此这里补一个显式点按开关；鼠标/触控板仍走原版悬停逻辑。
+    var fxFab = document.getElementById('fx-fab');
+    if (fxFab) fxFab.addEventListener('click', function (event) {
+      if (hoverPointer.matches) return;
+      event.preventDefault(); event.stopPropagation();
+      var panel = document.getElementById('fx-panel');
+      var open = !!panel && (panel.classList.contains('show') || panel.classList.contains('peek'));
+      if (open) toggleFxPanel(false); else toggleFxPanel();
+    });
   }
   if (typeof isPlaylistEdgeTrigger === 'function') {
     var originalPlaylistEdgeTrigger = isPlaylistEdgeTrigger;
