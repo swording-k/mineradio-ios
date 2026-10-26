@@ -43,6 +43,12 @@ struct OriginalPlayerView: UIViewRepresentable {
             """
             config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        // WebKit 不提供 navigator.deviceMemory，原版引擎因此无法识别低内存设备。
+        // 在模块加载前提供真实物理内存（GB，取整），让原版 lowSpec 判定生效。
+        let memoryGB = max(1, Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded()))
+        config.userContentController.addUserScript(WKUserScript(source: """
+            (() => { try { if (!('deviceMemory' in navigator)) Object.defineProperty(Navigator.prototype, 'deviceMemory', {configurable: true, get: () => \(memoryGB)}); } catch (_) {} })();
+            """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--apple-power-smoke") {
             config.userContentController.addUserScript(WKUserScript(source: ApplePowerSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -63,6 +69,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         // playable after that await; video retains WebKit's gesture requirement.
         config.mediaTypesRequiringUserActionForPlayback = [.video]
         let view = WKWebView(frame: .zero, configuration: config)
+        context.coordinator.webView = view
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         view.isOpaque = false
@@ -86,12 +93,27 @@ struct OriginalPlayerView: UIViewRepresentable {
         var parent: OriginalPlayerView
         private var presentedState: Bool?
         private var memoryWarning: NSObjectProtocol?
+        weak var webView: WKWebView?
+        /// 当前内存压力档位（0-3），WebContent 重启后据此恢复，避免重启后立刻再次爆内存。
+        private var pressureLevel = 0
+        private var recoveries: [Date] = []
         init(_ parent: OriginalPlayerView) {
             self.parent = parent
             super.init()
             AppleDiagnostics.shared.recordNative("view-created")
-            memoryWarning = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
-                Task { @MainActor in AppleDiagnostics.shared.recordNative("memory-warning") }
+            memoryWarning = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    AppleDiagnostics.shared.recordNative("memory-warning")
+                    self?.relieveMemoryPressure()
+                }
+            }
+        }
+        /// 把系统内存警告转交给原版引擎：逐级降低内部渲染分辨率并深度裁剪缓存（apple-memory.js）。
+        private func relieveMemoryPressure() {
+            webView?.evaluateJavaScript("window.__mineradioAppleMemoryPressure ? window.__mineradioAppleMemoryPressure('warning').level : -1") { [weak self] result, _ in
+                Task { @MainActor in
+                    if let level = result as? Int, level >= 0 { self?.pressureLevel = max(self?.pressureLevel ?? 0, level) }
+                }
             }
         }
         deinit { if let memoryWarning { NotificationCenter.default.removeObserver(memoryWarning) } }
@@ -143,6 +165,9 @@ struct OriginalPlayerView: UIViewRepresentable {
             webView.scrollView.bouncesZoom = false
             parent.failure = nil
             updateAccountPresentation(webView, force: true)
+            if pressureLevel > 0 {
+                webView.evaluateJavaScript("window.__mineradioAppleMemoryPressure && window.__mineradioAppleMemoryPressure('restore', \(pressureLevel))", completionHandler: nil)
+            }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--native-smoke"), webView.url?.host == "127.0.0.1" {
                 webView.callAsyncJavaScript("""
@@ -161,7 +186,16 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             AppleDiagnostics.shared.recordNative("webcontent-terminated")
-            parent.failure = "页面进程已退出。请重试；如重复发生，需要降低动效资源占用。"
+            // 页面进程被系统回收时自动恢复，而不是停在黑屏/错误页。
+            // 每次恢复提高一档内存压力；3 分钟内连续 3 次才交给用户手动重试，防止无限重启。
+            let now = Date()
+            recoveries = recoveries.filter { now.timeIntervalSince($0) < 180 } + [now]
+            pressureLevel = min(3, pressureLevel + 1)
+            if recoveries.count <= 2 {
+                webView.reload()
+            } else {
+                parent.failure = "播放器页面多次被系统回收（内存不足）。请点重试；建议在视觉控制台降低画质档位。"
+            }
         }
         private func report(_ error: Error) {
             if (error as NSError).code != NSURLErrorCancelled {
