@@ -121,19 +121,36 @@ actor QishuiCatalogAPI {
         case "/api/qishui/song/url":
             let id = try checkedID(q("id")), status = await validateAccount()
             guard status["loggedIn"] as? Bool == true else { return status.merging(["playable": false, "reason": "login_required"]) { _, b in b } }
+            // 返回给前端的结果都带上已验证的账号与会员信息，避免已登录时仍提示「当前未登录」。
+            func account(_ result: [String: Any]) -> [String: Any] {
+                var out = result
+                out["loggedIn"] = true
+                for key in ["vipLevel", "isVip", "isSvip", "vipType", "vipLabel", "membershipKnown"] { if out[key] == nil, let v = status[key] { out[key] = v } }
+                return out
+            }
+            // 1) 桌面 PC 接口（GET，与原 Windows 契约一致）
             do {
                 let payload = try await pc("/luna/pc/track_v2", ["track_id": id, "media_type": "track"])
                 let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
-                if result["playable"] as? Bool == true { return result }
+                if result["playable"] as? Bool == true { return account(result) }
             } catch QishuiCatalogFailure.sessionExpired { return QishuiCatalogContract.disconnected(expired: true).merging(["playable": false]) { _, b in b } }
-            catch {
-                // 汽水官方已将 /luna/pc/track_v2 对第三方关闭（返回空 body）。
-                // 回退到免登录 seo_track → url_player_info → PlayerInfo，取可直接播放的音源。
-                // 对照安卓 qishui-api.js: resolveQishuiSeoPlayback / fetchQishuiSeoTrack / fetchQishuiPlayerInfo。
-                if let seo = try? await seoPlayback(id, membership: status) { return seo }
+            catch {}
+            // 2) Web 会话的 POST 形式（安卓 fetchQishuiPcTrackV2Post 的做法：device_platform=web）
+            if let payload = try? await webTrackV2(id) {
+                let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
+                if result["playable"] as? Bool == true { return account(result) }
             }
-            do { return QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id) }
-            catch { return QishuiCatalogContract.playbackUnavailable() }
+            // 3) 汽水已对第三方关闭整曲接口时，回退 seo_track → url_player_info → PlayerInfo（官方仅给试听片段）。
+            if let seo = try? await seoPlayback(id, membership: status) {
+                var out = account(seo)
+                if out["trial"] as? Bool == true {
+                    out["source"] = "qishui-public-seo-track"
+                    out["message"] = "汽水仅向第三方客户端提供试听片段，完整播放需在汽水官方 App 内收听。"
+                }
+                return out
+            }
+            do { return account(QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id)) }
+            catch { return account(QishuiCatalogContract.playbackUnavailable()) }
         default: return QishuiCatalogContract.unsupported()
         }
     }
@@ -269,6 +286,25 @@ actor QishuiCatalogAPI {
         var components = URLComponents(string: "https://beta-luna.douyin.com/luna/h5/seo_track")!
         components.queryItems = [URLQueryItem(name: "track_id", value: id), URLQueryItem(name: "device_platform", value: "web")]
         let json = try await transport.request(components.url!, headers: ["Accept": "application/json", "User-Agent": "Mineradio Apple", "Referer": "https://www.douyin.com/"])
+        try QishuiCatalogContract.check(json)
+        return json
+    }
+
+    /// 平行参考安卓 fetchQishuiPcTrackV2Post：Web 会话 + device_platform=web 的 POST 请求。
+    private func webTrackV2(_ id: String) async throws -> [String: Any] {
+        guard hasSession else { throw QishuiCatalogFailure.invalidRequest }
+        var components = URLComponents(string: "https://api.qishui.com/luna/pc/track_v2")!
+        components.queryItems = [URLQueryItem(name: "aid", value: "386088"), URLQueryItem(name: "app_name", value: "luna_pc"),
+                                 URLQueryItem(name: "channel", value: "pc_web"), URLQueryItem(name: "device_platform", value: "web")]
+        let session = ["sessionid", "sessionid_ss", "sid_guard", "sid_tt", "uid_tt", "uid_tt_ss", "odin_tt", "ttwid"]
+        let cookie = cookies.filter { session.contains($0.key) }.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        let headers = ["Accept": "application/json,text/plain,*/*", "Content-Type": "application/json; charset=utf-8",
+                       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) SodaMusic/3.1.0 Chrome/136.0.7103.59 Electron/36.4.0-rs.22.release.main.1 TTElectron/36.4.0-rs.22.release.main.1 Safari/537.36",
+                       "Cookie": cookie]
+        let body = try JSONSerialization.data(withJSONObject: ["track_id": id, "media_type": "track", "queue_type": "favorite_track_playlist", "scene_name": "library"], options: [.sortedKeys])
+        let expected = generation
+        let json = try await transport.post(components.url!, headers: headers, body: body)
+        guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
         try QishuiCatalogContract.check(json)
         return json
     }
@@ -491,7 +527,8 @@ actor QishuiCatalogTransport: QishuiCatalogRequesting {
         return try await send(request)
     }
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
-        guard QishuiCatalogContract.allowedAPI(url), QishuiCatalogContract.writePaths.contains(url.path), body.count <= 65536 else { throw QishuiCatalogFailure.invalidRequest }
+        guard QishuiCatalogContract.allowedAPI(url), QishuiCatalogContract.writePaths.contains(url.path) || url.path == "/luna/pc/track_v2",
+              body.count <= 65536 else { throw QishuiCatalogFailure.invalidRequest }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.httpBody = body
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await send(request)

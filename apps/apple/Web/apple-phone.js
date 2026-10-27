@@ -92,6 +92,43 @@
     }
     body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close .queue-head { padding-right: 64px; }`;
   document.head.appendChild(extra);
+  // 登录节点连线（手机）：
+  // 1) 竖屏时 MR 节点在平台列表下方偏左，原版只按「左→右」画曲线，线会绕出面板。目标不在右侧时改用竖向 S 形曲线。
+  // 2) 登录弹窗在手机上可滚动，手指拖线会被系统当成滚动而取消。端口与排序把手禁止触摸滚动。
+  // 3) 再给一个更顺手的方式：手指点一下平台右侧的圆点，直接连接到 MR（与拖线到 MR 等效）。
+  if (typeof workflowBezierPath === 'function') {
+    var originalBezier = workflowBezierPath;
+    workflowBezierPath = function (a, b) {
+      if (!a || !b || b.x >= a.x - 8) return originalBezier.apply(this, arguments);
+      var dy = b.y - a.y, bend = Math.max(24, Math.min(90, Math.abs(dy) * 0.45));
+      return 'M ' + a.x.toFixed(1) + ' ' + a.y.toFixed(1) +
+        ' C ' + a.x.toFixed(1) + ' ' + (a.y + Math.sign(dy || 1) * bend).toFixed(1) +
+        ', ' + b.x.toFixed(1) + ' ' + (b.y - Math.sign(dy || 1) * bend).toFixed(1) +
+        ', ' + b.x.toFixed(1) + ' ' + b.y.toFixed(1);
+    };
+  }
+  var hoverPointer = window.matchMedia ? window.matchMedia('(hover: hover) and (pointer: fine)') : {matches: true};
+  document.addEventListener('pointerup', function (event) {
+    if (hoverPointer.matches || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return;
+    var port = event.target && event.target.closest ? event.target.closest('#login-node-graph .flow-port.out') : null;
+    if (!port || typeof connectLoginProviderToMr !== 'function') return;
+    var node = port.closest('[data-login-provider]');
+    var provider = port.getAttribute('data-login-provider-output') || (node && node.getAttribute('data-login-provider')) || '';
+    if (!provider) return;
+    // 原版 pointerup 先结束拖线；拖线本身已连上就不重复。
+    setTimeout(function () {
+      if (typeof hasLoginWorkflowConnection === 'function' && hasLoginWorkflowConnection(provider)) return;
+      if (typeof loginWorkflowPendingProvider !== 'undefined' && loginWorkflowPendingProvider === provider) return;
+      connectLoginProviderToMr(provider);
+    }, 30);
+  }, true);
+  var loginStyle = document.createElement('style');
+  loginStyle.textContent = `
+    body.apple-client #login-node-graph .flow-port, body.apple-client #login-node-graph [data-login-provider-sort] { touch-action: none; }
+    body.apple-client #login-node-graph .flow-port.out { position: relative; }
+    body.apple-client #login-node-graph .flow-port.out::after { content: ''; position: absolute; inset: -14px; }
+    body.apple-client #login-node-graph.dragging-line { touch-action: none; }`;
+  document.head.appendChild(loginStyle);
   // 触屏没有“鼠标移开”，去掉这句桌面提示。
   var sub = document.querySelector('#playlist-panel .queue-head .fx-sub');
   if (sub && /鼠标/.test(sub.textContent || '')) sub.textContent = 'QUEUE';
