@@ -4,7 +4,7 @@ const fs = require('node:fs'), vm = require('node:vm');
 function fixture(trial = true) {
   const store = new Map(), calls = [];
   const context = {
-    window: {}, document: {head: {appendChild() {}}, createElement: () => ({})},
+    window: {}, document: {head: {appendChild() {}}, createElement: () => ({}), addEventListener() {}, getElementById: () => null},
     localStorage: {getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v)},
     crypto: {getRandomValues: a => { a.forEach((_, i) => { a[i] = i + 1; }); return a; }},
     URLSearchParams, trackSwitchToken: 7, currentIdx: 0,
