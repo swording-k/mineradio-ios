@@ -122,12 +122,28 @@
       connectLoginProviderToMr(provider);
     }, 30);
   }, true);
+  // 竖屏手机：平台卡片会折成两行，节点连线在窄屏上没有可用空间。改为「点平台卡片 = 连接到 MR」，
+  // 隐藏端口与连线；已连接的平台用左侧高亮条表示（原版样式）。横屏与 iPad 保留原版拖线。
+  var portrait = window.matchMedia ? window.matchMedia('(max-width: 767px) and (orientation: portrait)') : {matches: false};
+  document.addEventListener('click', function (event) {
+    if (!portrait.matches || hoverPointer.matches) return;
+    var row = event.target && event.target.closest ? event.target.closest('#login-node-graph .login-node-providers [data-login-provider]') : null;
+    if (!row || (event.target.closest && event.target.closest('.login-provider-external-switch, [data-login-provider-sort], .login-provider-logout, button.logout'))) return;
+    var provider = row.getAttribute('data-login-provider') || '';
+    if (!provider || typeof connectLoginProviderToMr !== 'function') return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (typeof loginProviderClickSuppressed !== 'undefined') loginProviderClickSuppressed = false;
+    if (typeof hasLoginWorkflowConnection === 'function' && hasLoginWorkflowConnection(provider)) {
+      if (typeof selectLoginProviderNode === 'function') selectLoginProviderNode(provider);
+    } else connectLoginProviderToMr(provider);
+  }, true);
   var loginStyle = document.createElement('style');
   loginStyle.textContent = `
-    body.apple-client #login-node-graph .flow-port, body.apple-client #login-node-graph [data-login-provider-sort] { touch-action: none; }
-    body.apple-client #login-node-graph .flow-port.out { position: relative; }
-    body.apple-client #login-node-graph .flow-port.out::after { content: ''; position: absolute; inset: -14px; }
-    body.apple-client #login-node-graph.dragging-line { touch-action: none; }`;
+    body.apple-client #login-node-graph [data-login-provider-sort] { touch-action: none; }
+    @media (max-width: 767px) and (orientation: portrait) {
+      body.apple-client #login-node-graph .flow-port, body.apple-client #login-workflow-svg { display: none !important; }
+      body.apple-client #login-node-graph .login-node-providers [data-login-provider] { cursor: pointer; }
+    }`;
   document.head.appendChild(loginStyle);
   // 触屏没有“鼠标移开”，去掉这句桌面提示。
   var sub = document.querySelector('#playlist-panel .queue-head .fx-sub');
