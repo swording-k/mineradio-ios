@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// iPhone 原生播放控制条（IOS_PLAN 阶段 C）。
-/// 取代网页底部控制条：按钮由 SwiftUI 布局，按安全区自动对齐，44pt 触控目标。
+/// 三行布局：歌曲信息 / 细进度条 / 播放控制。歌名始终有独立的一整行，不会被按钮挤掉。
 /// 所有动作都转给原版播放器函数执行，播放逻辑仍与桌面同源。
 struct NativeControlBar: View {
     @ObservedObject var model: NowPlayingModel
@@ -11,29 +11,42 @@ struct NativeControlBar: View {
     private var state: NowPlayingModel.State { model.state }
 
     var body: some View {
-        VStack(spacing: 6) {
-            progress
-            HStack(spacing: 10) {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Button { model.command("detail") } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         cover
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(state.title.isEmpty ? "未在播放" : state.title)
-                                .font(.subheadline.weight(.semibold)).lineLimit(1)
+                                .font(.system(size: 15, weight: .semibold)).lineLimit(1)
                             Text(state.trial ? "试听片段 · " + state.artist : state.artist)
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.62)).lineLimit(1)
                         }
                         Spacer(minLength: 0)
-                    }.contentShape(Rectangle())
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("歌曲详情：\(state.title) \(state.artist)")
-
-                control(state.liked ? "heart.fill" : "heart", "红心喜欢", tint: state.liked ? .pink : .primary) { model.command("like") }
-                control("backward.fill", "上一首") { model.command("prev") }
-                control(state.playing ? "pause.fill" : "play.fill", state.playing ? "暂停" : "播放", size: 22) { model.command("toggle") }
-                control("forward.fill", "下一首") { model.command("next") }
-                control("music.note.list", "歌单与播放队列") { model.command("library") }
+                control(state.liked ? "heart.fill" : "heart", "红心喜欢", size: 18, tint: state.liked ? Color(red: 1, green: 0.36, blue: 0.48) : .white) { model.command("like") }
+            }
+            progress
+            HStack(spacing: 0) {
+                control("music.note.list", "歌单与播放队列", size: 18) { model.command("library") }
+                Spacer(minLength: 4)
+                control("backward.fill", "上一首", size: 20) { model.command("prev") }
+                Spacer(minLength: 4)
+                Button { model.command("toggle") } label: {
+                    Image(systemName: state.playing ? "pause.fill" : "play.fill")
+                        .font(.system(size: 22, weight: .bold)).foregroundStyle(.black)
+                        .frame(width: 52, height: 52).background(Circle().fill(.white))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(state.playing ? "暂停" : "播放")
+                Spacer(minLength: 4)
+                control("forward.fill", "下一首", size: 20) { model.command("next") }
+                Spacer(minLength: 4)
                 Menu {
                     Button { model.command("lyrics") } label: { Label("歌词", systemImage: "quote.bubble") }
                     Button { model.command("mode") } label: { Label("切换播放顺序", systemImage: "repeat") }
@@ -41,15 +54,16 @@ struct NativeControlBar: View {
                     Button { model.command("webBar", true) } label: { Label("音质、音量与更多", systemImage: "slider.horizontal.3") }
                 } label: {
                     Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold))
-                        .frame(width: 40, height: 44).contentShape(Rectangle())
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityLabel("更多播放设置")
             }
         }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.08)))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.1)))
         .environment(\.colorScheme, .dark)
     }
 
@@ -57,34 +71,62 @@ struct NativeControlBar: View {
         AsyncImage(url: URL(string: state.cover)) { image in
             image.resizable().scaledToFill()
         } placeholder: {
-            Image(systemName: "music.note").foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.06))
+            Image(systemName: "music.note").foregroundStyle(.white.opacity(0.5))
+                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.08))
         }
-        .frame(width: 42, height: 42).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .accessibilityHidden(true)
     }
 
+    /// 细进度条：4pt 轨道，拖动时变粗；整行 28pt 高都可以拖，方便手指操作。
     private var progress: some View {
         let duration = max(state.duration, 0)
         let value = scrubbing ? scrubValue : min(state.current, duration)
-        return HStack(spacing: 8) {
-            Text(Self.time(value)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-            Slider(value: Binding(get: { value }, set: { scrubValue = $0 }), in: 0...max(duration, 1)) { editing in
-                if editing { scrubValue = value; scrubbing = true }
-                else { scrubbing = false; model.command("seek", scrubValue) }
+        let fraction = duration > 0 ? value / duration : 0
+        return VStack(spacing: 3) {
+            GeometryReader { proxy in
+                let width = max(proxy.size.width, 1)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.18))
+                    Capsule().fill(.white.opacity(0.9)).frame(width: width * fraction)
+                }
+                .frame(height: scrubbing ? 7 : 4)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        guard duration > 0 else { return }
+                        scrubbing = true
+                        scrubValue = min(max(drag.location.x / width, 0), 1) * duration
+                    }
+                    .onEnded { _ in
+                        guard scrubbing else { return }
+                        scrubbing = false
+                        model.command("seek", scrubValue)
+                    })
+                .animation(.easeOut(duration: 0.15), value: scrubbing)
             }
-            .disabled(duration <= 0)
-            .tint(.white)
-            .accessibilityLabel("播放进度")
-            Text(Self.time(duration)).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+            .frame(height: 20)
+            HStack {
+                Text(Self.time(value)); Spacer(); Text(Self.time(duration))
+            }
+            .font(.system(size: 10, weight: .medium).monospacedDigit()).foregroundStyle(.white.opacity(0.5))
+        }
+        .accessibilityElement()
+        .accessibilityLabel("播放进度")
+        .accessibilityValue("\(Self.time(value))，共 \(Self.time(duration))")
+        .accessibilityAdjustableAction { direction in
+            guard duration > 0 else { return }
+            let step = direction == .increment ? 10.0 : -10.0
+            model.command("seek", min(max(value + step, 0), duration))
         }
     }
 
-    private func control(_ symbol: String, _ label: String, size: CGFloat = 17, tint: Color = .primary,
+    private func control(_ symbol: String, _ label: String, size: CGFloat = 17, tint: Color = .white,
                          action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: size, weight: .semibold)).foregroundStyle(tint)
-                .frame(width: 40, height: 44).contentShape(Rectangle())
+                .frame(width: 44, height: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

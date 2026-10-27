@@ -54,6 +54,36 @@ enum QishuiCatalogContract {
                 "time": time > 0 && time < 10000000000 ? time * 1000 : time,
                 "user": ["id": pick(["id", "user_id", "userId", "uid"], user), "nickname": pick(["nickname", "nick_name", "nickName", "name"], user), "avatar": image(user["avatar_url"], user["avatarUrl"], user["avatar"], user["medium_avatar_url"], user["larger_avatar_url"])]]
     }
+    /// 与桌面 qishui-api.js qishuiImageUrl / qishuiFirstImageUrl 一致：
+    /// 字符串地址无 "~" 模板时追加尺寸后缀；对象取 urls 前缀并拼接 uri。
+    static func qishuiImage(_ suffix: String, _ values: Any?...) -> String {
+        func one(_ value: Any?, _ depth: Int) -> String {
+            guard depth < 4, let value else { return "" }
+            if let s = value as? String {
+                let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard t.lowercased().hasPrefix("http") else { return "" }
+                let out = t.contains("~") ? t : t + suffix
+                return URL(string: out).map(allowedMedia) == true ? out : ""
+            }
+            if let list = value as? [Any] { return list.lazy.map { one($0, depth + 1) }.first { !$0.isEmpty } ?? "" }
+            guard let node = value as? [String: Any] else { return "" }
+            func firstURL(_ v: Any?) -> String {
+                if let s = v as? String { return s }
+                if let l = v as? [Any] { return l.compactMap { $0 as? String }.first { !$0.isEmpty } ?? "" }
+                if let d = v as? [String: Any] { return firstURL(d["url_list"] ?? d["urls"] ?? d["url"] ?? d["uri"]) }
+                return ""
+            }
+            let cover = text(firstURL(node["urls"] ?? node["url_list"] ?? node["urlList"] ?? node["url"] ?? node["main_url"] ?? node["cover_url"] ?? node["image_url"]))
+            let uri = text(node["uri"] ?? node["url_key"] ?? node["image_uri"] ?? node["cover_uri"])
+            var out = cover
+            if !out.isEmpty, !uri.isEmpty, !out.contains(uri) { out += uri }
+            if out.isEmpty, uri.lowercased().hasPrefix("http") { out = uri }
+            guard out.lowercased().hasPrefix("http") else { return "" }
+            if !out.contains("~") { out += suffix }
+            return URL(string: out).map(allowedMedia) == true ? out : ""
+        }
+        return values.lazy.map { one($0, 0) }.first { !$0.isEmpty } ?? ""
+    }
     static func image(_ values: Any?...) -> String {
         func read(_ value: Any?, _ depth: Int) -> String {
             if depth > 4 { return "" }
@@ -87,7 +117,9 @@ enum QishuiCatalogContract {
         let uid = pick(["user_id", "userId", "id", "uid", "sec_uid", "secUid", "open_id"], user)
         var result: [String: Any] = ["userId": uid.isEmpty ? pick(["user_id", "userId", "uid", "id"], raw) : uid,
                                      "nickname": pick(["nickname", "nick_name", "nickName", "display_name", "displayName", "name", "public_name", "douyin_id"], user),
-                                     "avatar": image(user["larger_avatar_url"], user["medium_avatar_url"], user["avatar_url"], user["avatarUrl"], user["avatar"], user["pic"]),
+                                     "avatar": qishuiImage("~c5_300x300.jpg", user["larger_avatar_url"], user["medium_avatar_url"], user["avatar_url"], user["avatarUrl"],
+                                                           user["avatar"], user["user_avatar"], user["pic"], user["icon"],
+                                                           raw["larger_avatar_url"], raw["medium_avatar_url"], raw["avatar_url"], raw["avatar"], raw["pic"]),
                                      "douyinId": pick(["douyin_id", "unique_id", "short_id"], user)]
         result.merge(membership(raw)) { _, b in b }; return result
     }
@@ -159,7 +191,9 @@ enum QishuiCatalogContract {
             return ["provider": "qishui", "source": "qishui", "type": "qishui", "id": id, "providerSongId": id, "name": name,
                     "artist": artists.compactMap { $0["name"] as? String }.joined(separator: " / "), "artists": artists,
                     "album": text(album["name"] ?? album["title"] ?? base["album_name"]), "albumId": text(album["id"]),
-                    "cover": image(display["cover_url"], display["url_cover"], base["cover_url"], base["url_cover"], album["cover_url"], track["cover_url"], raw["cover"]),
+                    "cover": qishuiImage("~c5_375x375.jpg", display["cover_url"], display["url_cover"], base["cover_url"], base["url_cover"],
+                                         album["cover_url"], album["url_cover"], track["url_cover"], track["cover_url"],
+                                         media["cover_url"], media["url_cover"], raw["cover_url"], raw["cover"], raw["url_cover"]),
                     "duration": duration, "fee": truth((track["label_info"] as? [String: Any])?["only_vip_playable"]) ? 1 : 0,
                     "playable": true, "playbackMode": "direct-url", "recommendationSource": "qishui-pc-session"]
         }
@@ -176,7 +210,8 @@ enum QishuiCatalogContract {
             let kind = text(item["type"] ?? item["resource_type"]).lowercased()
             if !id.isEmpty, !name.isEmpty, count > 0 || kind.contains("playlist") || name.contains("喜欢") || name.contains("歌单"), seen.insert(id).inserted {
                 result.append(["provider": "qishui", "source": "qishui", "type": "playlist", "id": id, "name": name,
-                               "cover": image(item["cover_url"], item["cover"], item["image"]), "trackCount": count,
+                               "cover": qishuiImage("~c5_300x300.jpg", item["cover_url"], item["cover"], item["cover_uri"], item["image"],
+                                                    item["image_url"], item["url_cover"], item["icon"], item["avatar"]), "trackCount": count,
                                "creator": text(item["creator_name"] ?? item["author_name"]), "subscribed": true, "virtual": false, "webSession": true])
             }
             item.values.prefix(80).forEach { visit($0, depth + 1) }

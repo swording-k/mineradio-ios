@@ -185,6 +185,13 @@ import UniformTypeIdentifiers
                 }
                 // Upgrade CDN HTTP links before leaving the device.
                 if target.scheme == "http" { var c = URLComponents(url: target, resolvingAgainstBaseURL: false)!; c.scheme = "https"; if c.port == 80 { c.port = nil }; target = c.url! }
+                // 封面 / 头像走本机缓存：重复请求（含前端时间戳参数）直接命中，避免闪烁与重复下载。
+                if url.path == "/api/cover", method == "GET" {
+                    if let image = await AppleCoverCache.shared.image(for: target, referer: AppleMediaPolicy.referer(target)) {
+                        send(connection, status: 200, type: image.type, data: image.data, extra: ["Cache-Control": "private, max-age=604800"])
+                        return
+                    }
+                }
                 var request = URLRequest(url: target, timeoutInterval: 20)
                 request.httpMethod = method
                 request.setValue(AppleMediaPolicy.referer(target), forHTTPHeaderField: "Referer")
@@ -234,7 +241,9 @@ import UniformTypeIdentifiers
     }
 
     private func send(_ connection: NWConnection, status: Int, type: String, data: Data, extra: [String: String] = [:]) {
-        var head = "HTTP/1.1 \(status) Response\r\nContent-Type: \(type)\r\nContent-Length: \(data.count)\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
+        var head = "HTTP/1.1 \(status) Response\r\nContent-Type: \(type)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n"
+        if extra["Cache-Control"] == nil { head += "Cache-Control: no-store\r\n" }
+        head += "X-Content-Type-Options: nosniff\r\n"
         for (key, value) in extra { head += "\(key): \(value)\r\n" }
         var packet = Data((head + "\r\n").utf8)
         packet.append(data)

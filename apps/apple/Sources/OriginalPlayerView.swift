@@ -178,8 +178,39 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { report(error) }
+        #if DEBUG && targetEnvironment(simulator)
+        /// 仅模拟器调试：轮询 Documents/inspect.js，有变化就在页面里执行，结果写入 inspect-result.json。
+        /// 用于开发时自动驱动界面、截图检查；Release 与真机构建不包含。
+        private var inspector: Timer?
+        private var inspectorStamp = Date.distantPast
+        func startInspector(_ webView: WKWebView) {
+            guard inspector == nil, let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+            let script = docs.appendingPathComponent("inspect.js"), output = docs.appendingPathComponent("inspect-result.json")
+            inspector = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self, weak webView] _ in
+                Task { @MainActor in
+                    guard let self, let webView,
+                          let stamp = (try? FileManager.default.attributesOfItem(atPath: script.path))?[.modificationDate] as? Date,
+                          stamp > self.inspectorStamp, let source = try? String(contentsOf: script, encoding: .utf8) else { return }
+                    self.inspectorStamp = stamp
+                    webView.callAsyncJavaScript(source, arguments: [:], in: nil, in: .page) { result in
+                        let value: Any
+                        switch result {
+                        case .success(let v): value = ["ok": true, "value": v ?? NSNull()]
+                        case .failure(let e): value = ["ok": false, "error": "\(e)"]
+                        }
+                        let data = (try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .fragmentsAllowed]))
+                            ?? Data("{\"ok\":false,\"error\":\"unserializable\"}".utf8)
+                        try? data.write(to: output)
+                    }
+                }
+            }
+        }
+        #endif
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             AppleDiagnostics.shared.recordNative("page-loaded")
+            #if DEBUG && targetEnvironment(simulator)
+            startInspector(webView)
+            #endif
             // WebKit may configure its scroll recognizers while loading the page.
             webView.scrollView.bouncesZoom = false
             parent.failure = nil

@@ -72,9 +72,17 @@
       webBar: webBarRequested
     };
   }
+  var lastReserved = -1;
+  function reserve(s) {
+    // 原生控制条出现时，首页与面板底部给它留位；没歌或切到原版控制条时归零。
+    var value = nativeBar && s.hasSong && !s.webBar && !s.immersive ? barHeight : 0;
+    if (value === lastReserved) return;
+    lastReserved = value;
+    document.documentElement.style.setProperty('--apple-native-reserved', value + 'px');
+  }
   function push(force) {
-    var payload;
-    try { payload = JSON.stringify(state()); } catch (_) { return; }
+    var payload, s;
+    try { s = state(); reserve(s); payload = JSON.stringify(s); } catch (_) { return; }
     if (!force && payload === lastPayload) return;
     lastPayload = payload;
     try { bridge.postMessage({type: 'state', state: JSON.parse(payload)}); } catch (_) {}
@@ -112,6 +120,7 @@
         case 'barHeight':
           barHeight = Math.max(0, Math.min(400, Number(value) || 0));
           document.documentElement.style.setProperty('--apple-native-bar-height', barHeight + 'px');
+          lastReserved = -1;
           positionFab();
           break;
         default: return false;

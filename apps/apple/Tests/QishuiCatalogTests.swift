@@ -52,6 +52,15 @@ private actor CatalogFixture: QishuiCatalogRequesting {
         precondition(QishuiCatalogContract.image(["urls": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos-cn-v-2774c002/abc"])
                      == "https://p3-luna.douyinpic.com/img/tos-cn-v-2774c002/abc~c5_300x300.jpg")
         precondition(QishuiCatalogContract.image(["urls": ["https://evil.test/img/"], "uri": "x"]).isEmpty)
+        // 与桌面 qishuiImageUrl 对齐：对象拼 uri + 尺寸；字符串无模板时追加尺寸；已有模板保持原样。
+        precondition(QishuiCatalogContract.qishuiImage("~c5_375x375.jpg", nil, ["url_list": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos/a"])
+                     == "https://p3-luna.douyinpic.com/img/tos/a~c5_375x375.jpg")
+        precondition(QishuiCatalogContract.qishuiImage("~c5_300x300.jpg", "https://p3-luna.douyinpic.com/img/tos/b")
+                     == "https://p3-luna.douyinpic.com/img/tos/b~c5_300x300.jpg")
+        precondition(QishuiCatalogContract.qishuiImage("~c5_300x300.jpg", "https://p3-luna.douyinpic.com/img/tos/c~tplv-x:0:360.image")
+                     == "https://p3-luna.douyinpic.com/img/tos/c~tplv-x:0:360.image")
+        let albumCover = QishuiCatalogContract.songs([["track": ["id": "7", "name": "S", "album": ["url_cover": ["urls": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos/al"]]]]])
+        precondition(albumCover.first?["cover"] as? String == "https://p3-luna.douyinpic.com/img/tos/al~c5_375x375.jpg", "album.url_cover must be used like desktop")
         precondition(QishuiCatalogContract.playback(["data": ["track": ["id": "1", "duration_ms": 180000, "label_info": ["only_vip_playable": true], "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/private.m4a", "duration": 180]]]]]], membership: [:], publicSource: false)["playable"] as? Bool == false)
         let svipOnly: [String: Any] = ["data": ["track": ["id": "1", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/hires.flac", "duration": 180, "quality": "hires"]]]]]]
         precondition(QishuiCatalogContract.playback(svipOnly, membership: ["membershipKnown": true, "isVip": true, "isSvip": false], publicSource: false)["playable"] as? Bool == false)
