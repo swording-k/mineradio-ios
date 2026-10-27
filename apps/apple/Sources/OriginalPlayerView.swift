@@ -262,6 +262,37 @@ struct OriginalPlayerView: UIViewRepresentable {
                 decisionHandler(.cancel)
             } else { decisionHandler(.allow) }
         }
+        // 原版用 window.alert / confirm / prompt（如「新建内置歌单」要输入名字、删除要确认）。
+        // WKWebView 不实现这三个回调时会静默返回空，按钮看起来「点了没用」。这里用系统弹窗承接。
+        private func presenter(_ webView: WKWebView) -> UIViewController? {
+            var top = webView.window?.rootViewController
+            while let next = top?.presentedViewController { top = next }
+            return top
+        }
+        func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+            guard let host = presenter(webView) else { completionHandler(); return }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "好", style: .default) { _ in completionHandler() })
+            host.present(alert, animated: true)
+        }
+        func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+            guard let host = presenter(webView) else { completionHandler(false); return }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(false) })
+            alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in completionHandler(true) })
+            host.present(alert, animated: true)
+        }
+        func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+            guard let host = presenter(webView) else { completionHandler(nil); return }
+            let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
+            alert.addTextField { $0.text = defaultText; $0.clearButtonMode = .whileEditing }
+            alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(nil) })
+            alert.addAction(UIAlertAction(title: "确定", style: .default) { [weak alert] _ in completionHandler(alert?.textFields?.first?.text ?? "") })
+            host.present(alert, animated: true)
+        }
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = action.request.url, ["http", "https"].contains(url.scheme ?? "") { UIApplication.shared.open(url) }
             return nil

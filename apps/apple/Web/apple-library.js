@@ -154,10 +154,45 @@
     }
   }
 
-  // ---------- 3) 触屏入口 ----------
+  // ---------- 3) 触屏（iPhone 与 iPad 共用） ----------
+  // 原版的「账号胶囊自动隐藏」「DIY 按钮自动隐藏」靠鼠标移到右上 / 右下角才出现；触屏没有悬停，
+  // iPad 上表现为右上角头像和按钮消失、不知道怎么点开。触屏一律常显。
+  var touchOnly = window.matchMedia ? window.matchMedia('(hover: none)') : {matches: false};
+  function keepChromeVisible() {
+    if (!touchOnly.matches || !document.body) return;
+    ['user-capsule-auto-hide', 'fx-fab-auto-hide'].forEach(function (c) { if (document.body.classList.contains(c)) document.body.classList.remove(c); });
+  }
+  keepChromeVisible();
+  if (typeof MutationObserver !== 'undefined' && document.body) {
+    new MutationObserver(keepChromeVisible).observe(document.body, {attributes: true, attributeFilter: ['class']});
+  }
+  // 面板外点一下即关闭（iPad 上歌单 / 视觉控制台原来只能靠鼠标移开收起）。
+  document.addEventListener('pointerdown', function (e) {
+    if (!touchOnly.matches || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return;
+    var t = e.target;
+    if (!t || !t.closest || t.closest('#playlist-panel, #fx-panel, #apple-library-btn, #fx-fab, .modal-mask, #bottom-bar')) return;
+    var pl = document.getElementById('playlist-panel'), fx = document.getElementById('fx-panel');
+    if (pl && (pl.classList.contains('show') || pl.classList.contains('peek')) && typeof togglePlaylistPanel === 'function') {
+      if (typeof playlistPanelPinned !== 'undefined') playlistPanelPinned = false;
+      togglePlaylistPanel(false); pl.classList.remove('show', 'peek');
+    }
+    if (fx && (fx.classList.contains('show') || fx.classList.contains('peek')) && typeof toggleFxPanel === 'function') toggleFxPanel(false);
+  }, true);
+  // 「歌单」按钮再点一次即收起。
+  var libBtn = document.getElementById('apple-library-btn');
+  if (libBtn) libBtn.addEventListener('click', function (e) {
+    var pl = document.getElementById('playlist-panel');
+    if (!pl || !(pl.classList.contains('show') || pl.classList.contains('peek')) || pl.__appleJustOpened) return;
+    e.stopImmediatePropagation();
+    if (typeof playlistPanelPinned !== 'undefined') playlistPanelPinned = false;
+    if (typeof togglePlaylistPanel === 'function') togglePlaylistPanel(false);
+    pl.classList.remove('show', 'peek');
+  }, true);
   var style = document.createElement('style');
   style.textContent = [
     '@media (hover: none) {',
+    '  body.apple-client .apple-panel-close { display: block !important; }',
+    '  body.apple-client #user-capsule-hide-btn, body.apple-client #fx-fab-hide-btn { display: none !important; }',
     '  body.apple-client #apple-library-btn { display: inline-flex !important; align-items: center; justify-content: center; flex: 0 0 auto;',
     '    min-width: 44px; height: 44px; padding: 0 12px; border-radius: 22px; color: inherit; background: rgba(20,20,24,.8); border: 1px solid rgba(255,255,255,.22); }',
     '  body.apple-client #hotkey-settings-btn, body.apple-client [data-fx-console-entry][id="hotkey-settings-btn"] { display: none !important; }',
