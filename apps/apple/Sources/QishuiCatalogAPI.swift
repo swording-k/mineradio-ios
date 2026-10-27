@@ -316,8 +316,9 @@ actor QishuiCatalogAPI {
             ?? (data["play_info_list"] as? [[String: Any]]) ?? (json["PlayInfoList"] as? [[String: Any]]) ?? []
         guard !list.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
 
-        let full = QishuiCatalogContract.seconds(seoTrack["duration_ms"] ?? seoTrack["duration"]
-            ?? (seoTrack["base_info"] as? [String: Any])?["duration_ms"])
+        let base = seoTrack["base_info"] as? [String: Any] ?? [:]
+        let full = [seoTrack["duration_ms"], seoTrack["duration"], base["duration_ms"], base["duration"]]
+            .map { QishuiCatalogContract.seconds($0) }.max() ?? 0
         let membershipKnown = membership["membershipKnown"] as? Bool == true
         let isVip = membership["isVip"] as? Bool == true
         let isSvip = membership["isSvip"] as? Bool == true
@@ -342,7 +343,9 @@ actor QishuiCatalogAPI {
             let needSvip = streams.contains { $0.requiredTier == "svip" } && !streams.contains { $0.requiredTier != "svip" }
             return QishuiCatalogContract.playbackUnavailable(needSvip ? "svip_required" : "vip_required")
         }
-        let trial = best.duration > 0 && full > 0 && best.duration + 5 < full
+        // 免登录 seo_track 只给第三方试听片段（通常 30~60 秒）。整曲时长缺失时也按片段处理，
+        // 否则前端会以为完整歌曲的链接在 0:30 失效，反复「重新取链」。
+        let trial = best.duration > 0 && (full > 0 ? best.duration + 5 < full : best.duration <= 61)
         return ["provider": "qishui", "source": "qishui-seo-player-info",
                 "url": best.url + (best.auth.isEmpty ? "" : "#auth=" + (best.auth.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? best.auth)),
                 "playable": true, "trial": trial, "duration": best.duration, "fullDuration": full,

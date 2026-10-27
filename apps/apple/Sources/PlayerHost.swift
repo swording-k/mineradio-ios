@@ -24,6 +24,7 @@ struct PlayerHost: View {
                     VStack {
                         Spacer()
                         NativeControlBar(model: nowPlaying)
+                            .frame(maxWidth: 760)
                             .padding(.horizontal, 10).padding(.bottom, 4)
                             .background(GeometryReader { proxy in
                                 Color.clear.onAppear { reportBarHeight(proxy) }

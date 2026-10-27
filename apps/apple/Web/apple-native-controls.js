@@ -53,6 +53,13 @@
     var list = song.artists || song.ar;
     return Array.isArray(list) ? list.map(function (a) { return a && a.name; }).filter(Boolean).join(' / ') : '';
   }
+  var landscape = window.matchMedia ? window.matchMedia('(orientation: landscape) and (max-height: 500px) and (max-width: 1024px)') : {matches: false};
+  function panelOpen() {
+    return ['playlist-panel', 'fx-panel'].some(function (id) {
+      var el = document.getElementById(id);
+      return !!el && (el.classList.contains('show') || el.classList.contains('peek'));
+    });
+  }
   function state() {
     var song = currentSong(), heart = document.getElementById('heart-btn');
     return {
@@ -69,13 +76,15 @@
       splash: !!(body && body.classList.contains('splash-active')),
       modal: !!document.querySelector('.modal-mask.show,.modal.show,.login-easter-overlay.show'),
       autoHide: typeof controlsAutoHide === 'undefined' ? true : !!controlsAutoHide,
-      webBar: webBarRequested
+      webBar: webBarRequested,
+      // 横屏打开歌单 / 视觉控制台时，原生控制条让出底部空间。
+      panel: landscape.matches && panelOpen()
     };
   }
   var lastReserved = -1;
   function reserve(s) {
     // 原生控制条出现时，首页与面板底部给它留位；没歌或切到原版控制条时归零。
-    var value = nativeBar && s.hasSong && !s.webBar && !s.immersive ? barHeight : 0;
+    var value = nativeBar && s.hasSong && !s.webBar && !s.immersive && !s.panel ? barHeight : 0;
     if (value === lastReserved) return;
     lastReserved = value;
     document.documentElement.style.setProperty('--apple-native-reserved', value + 'px');

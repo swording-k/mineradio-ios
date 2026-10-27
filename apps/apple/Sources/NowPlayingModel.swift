@@ -10,7 +10,7 @@ import UIKit
         var hasSong = false, title = "", artist = "", cover = ""
         var playing = false, current = 0.0, duration = 0.0
         var liked = false, trial = false, immersive = false, splash = false, modal = false
-        var autoHide = true, webBar = false
+        var autoHide = true, webBar = false, panel = false
     }
     @Published private(set) var state = State()
     /// 原生控制条当前是否展开（自动隐藏 / 舞台点按唤出）。
@@ -23,7 +23,7 @@ import UIKit
     private var artwork: MPMediaItemArtwork?
     private var commandsInstalled = false
 
-    var showsBar: Bool { state.hasSong && !state.immersive && !state.splash && !state.modal && !state.webBar }
+    var showsBar: Bool { state.hasSong && !state.immersive && !state.splash && !state.modal && !state.webBar && !state.panel }
 
     func command(_ name: String, _ value: Any? = nil) {
         send?(name, value)
@@ -41,7 +41,7 @@ import UIKit
             var next = State(hasSong: b("hasSong"), title: s("title"), artist: s("artist"), cover: s("cover"),
                              playing: b("playing"), current: d("current"), duration: d("duration"),
                              liked: b("liked"), trial: b("trial"), immersive: b("immersive"), splash: b("splash"), modal: b("modal"),
-                             autoHide: raw["autoHide"] as? Bool ?? true, webBar: b("webBar"))
+                             autoHide: raw["autoHide"] as? Bool ?? true, webBar: b("webBar"), panel: b("panel"))
             if next.duration > 0 { next.current = min(next.current, next.duration) }
             let started = next.playing && !state.playing
             let trackChanged = next.title != state.title || next.cover != state.cover

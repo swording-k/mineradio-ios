@@ -8,9 +8,74 @@ struct NativeControlBar: View {
     @State private var scrubbing = false
     @State private var scrubValue = 0.0
 
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
     private var state: NowPlayingModel.State { model.state }
 
     var body: some View {
+        Group {
+            if verticalSizeClass == .compact { landscapeBar } else { portraitBar }
+        }
+        .foregroundStyle(.white)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.1)))
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// 横屏：单行 64pt，不遮挡舞台；进度条在中间占剩余宽度。
+    private var landscapeBar: some View {
+        HStack(spacing: 10) {
+            Button { model.command("detail") } label: {
+                HStack(spacing: 10) {
+                    cover
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.title.isEmpty ? "未在播放" : state.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                        Text(state.trial ? "试听片段 · " + state.artist : state.artist)
+                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.62)).lineLimit(1)
+                    }
+                    .frame(width: 150, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("歌曲详情：\(state.title) \(state.artist)")
+            progress.frame(minWidth: 120)
+            control("backward.fill", "上一首", size: 17) { model.command("prev") }
+            playButton(size: 44)
+            control("forward.fill", "下一首", size: 17) { model.command("next") }
+            control(state.liked ? "heart.fill" : "heart", "红心喜欢", size: 17, tint: state.liked ? Color(red: 1, green: 0.36, blue: 0.48) : .white) { model.command("like") }
+            control("music.note.list", "歌单与播放队列", size: 17) { model.command("library") }
+            moreMenu
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+    }
+
+    private func playButton(size: CGFloat) -> some View {
+        Button { model.command("toggle") } label: {
+            Image(systemName: state.playing ? "pause.fill" : "play.fill")
+                .font(.system(size: size * 0.42, weight: .bold)).foregroundStyle(.black)
+                .frame(width: size, height: size).background(Circle().fill(.white))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.playing ? "暂停" : "播放")
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button { model.command("lyrics") } label: { Label("歌词", systemImage: "quote.bubble") }
+            Button { model.command("mode") } label: { Label("切换播放顺序", systemImage: "repeat") }
+            Button { model.command("immersive") } label: { Label("沉浸模式", systemImage: "arrow.up.left.and.arrow.down.right") }
+            Button { model.command("webBar", true) } label: { Label("音质、音量与更多", systemImage: "slider.horizontal.3") }
+        } label: {
+            Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
+        }
+        .accessibilityLabel("更多播放设置")
+    }
+
+    private var portraitBar: some View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
                 Button { model.command("detail") } label: {
@@ -36,35 +101,14 @@ struct NativeControlBar: View {
                 Spacer(minLength: 4)
                 control("backward.fill", "上一首", size: 20) { model.command("prev") }
                 Spacer(minLength: 4)
-                Button { model.command("toggle") } label: {
-                    Image(systemName: state.playing ? "pause.fill" : "play.fill")
-                        .font(.system(size: 22, weight: .bold)).foregroundStyle(.black)
-                        .frame(width: 52, height: 52).background(Circle().fill(.white))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(state.playing ? "暂停" : "播放")
+                playButton(size: 52)
                 Spacer(minLength: 4)
                 control("forward.fill", "下一首", size: 20) { model.command("next") }
                 Spacer(minLength: 4)
-                Menu {
-                    Button { model.command("lyrics") } label: { Label("歌词", systemImage: "quote.bubble") }
-                    Button { model.command("mode") } label: { Label("切换播放顺序", systemImage: "repeat") }
-                    Button { model.command("immersive") } label: { Label("沉浸模式", systemImage: "arrow.up.left.and.arrow.down.right") }
-                    Button { model.command("webBar", true) } label: { Label("音质、音量与更多", systemImage: "slider.horizontal.3") }
-                } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold))
-                        .frame(width: 44, height: 44).contentShape(Rectangle())
-                }
-                .accessibilityLabel("更多播放设置")
+                moreMenu
             }
         }
-        .foregroundStyle(.white)
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.1)))
-        .environment(\.colorScheme, .dark)
     }
 
     private var cover: some View {

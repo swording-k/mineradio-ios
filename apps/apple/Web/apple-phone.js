@@ -44,7 +44,26 @@
       max-height: none !important;
     }
   }
+  @media ${PHONE} {
+    /* 原版工具条吸顶在 82px（桌面头部高度），手机头部更高，导致工具条压住头部、歌曲从缝里透出来。
+       手机上工具条随列表滚动，头部改为不透明。 */
+    body.apple-client #playlist-panel .queue-toolbar { position: static !important; top: auto !important; margin-bottom: 6px; }
+    body.apple-client #playlist-panel .playlist-panel-sticky {
+      top: 0 !important; z-index: 3;
+      background: rgba(12, 14, 18, .97) !important;
+    }
+  }
   @media ${LAND} {
+    /* 横屏：打开歌单时原生控制条让位，面板从顶部铺到底部；标题行收起，只留标签与操作。 */
+    body.apple-client #playlist-panel, body.apple-client #fx-panel {
+      bottom: calc(env(safe-area-inset-bottom) + 8px) !important;
+    }
+    body.apple-client #playlist-panel .queue-head > div:first-child { display: none; }
+    body.apple-client #playlist-panel .queue-head { min-height: 0; margin: 0 !important; justify-content: flex-start; }
+    body.apple-client #playlist-panel .playlist-panel-sticky { display: flex; flex-direction: row-reverse; align-items: center; justify-content: flex-end; gap: 8px; }
+    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close > .apple-panel-close { top: 50%; transform: translateY(-50%); }
+    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close { padding-right: 70px !important; }
+    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close .queue-head { padding-right: 0; }
     /* 横屏：面板从顶部铺到底部，宽度按屏幕比例，列表至少能看到 4~5 首 */
     body.apple-client #playlist-panel {
       top: max(env(safe-area-inset-top), 8px) !important;
