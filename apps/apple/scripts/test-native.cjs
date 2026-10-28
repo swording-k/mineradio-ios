@@ -26,7 +26,7 @@ const suites = [
   ['QishuiFeatureTests', ['QishuiCatalogContract','QishuiCatalogAPI']],
   ['AppleMediaPolicyTests', providers],
   ['MediaStreamTests', [...providers,'NeteaseMediaStream']],
-  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleCoverCache','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow','SpotifyContract','SpotifyNativeAPI'])]],
+  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleCoverCache','AppleDirectQrLogin','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow','SpotifyContract','SpotifyNativeAPI'])]],
 ];
 function run(command, args) {
   const result = spawnSync(command, args, {cwd: root, stdio: 'inherit'});

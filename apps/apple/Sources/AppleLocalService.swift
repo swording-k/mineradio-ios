@@ -71,6 +71,28 @@ import UniformTypeIdentifiers
         default: return ["loggedIn": false, "message": "此平台不使用官方网页会话导入。"]
         }
     }
+    private let directLogin = AppleDirectQrLogin()
+    /// QQ 音乐 / 酷狗直连扫码（与网易云同一种方式）。成功后把凭证交给对应原生适配器，返回已验证的账号状态。
+    private func directQr(_ url: URL) async throws -> [String: Any] {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func q(_ k: String) -> String { items.first { $0.name == k }?.value ?? "" }
+        switch url.path {
+        case "/api/apple/qr/qq/create": return try await directLogin.qqCreate()
+        case "/api/apple/qr/qq/check":
+            let (result, cookies) = await directLogin.qqCheck(qrsig: q("qrsig"), ptqrtoken: q("ptqrtoken"))
+            guard result["status"] as? String == "ok" else { return result }
+            let account = try await qq.setSession(cookies)
+            return result.merging(account) { _, new in new }.merging(["provider": "qq", "status": "ok"]) { _, new in new }
+        case "/api/apple/qr/kugou/create": return try await directLogin.kugouCreate()
+        case "/api/apple/qr/kugou/check":
+            let (result, cookies) = await directLogin.kugouCheck(key: q("key"))
+            guard result["status"] as? String == "ok" else { return result }
+            try await kugou.setSession(cookies)
+            let account = try await kugou.handle(URL(string: "http://127.0.0.1:\(port)/api/kugou/login/status")!, method: "GET", body: Data())
+            return result.merging(account) { _, new in new }.merging(["provider": "kugou", "status": "ok"]) { _, new in new }
+        default: return ["ok": false, "error": "APPLE_QR_ROUTE_UNSUPPORTED"]
+        }
+    }
     private func qishuiAPI(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
         switch url.path {
         case "/api/qishui/login/qrcode": return try await qishui.createQrCode()
@@ -207,7 +229,8 @@ import UniformTypeIdentifiers
                     send(connection, status: 403, type: "application/json", data: Data("{\"error\":\"LOCAL_SESSION_REQUIRED\"}".utf8)); return
                 }
                 let result: [String: Any]
-                if url.path.hasPrefix("/api/qq/") { result = try await qq.handle(url, method: method, body: body) }
+                if url.path.hasPrefix("/api/apple/qr/") { result = try await directQr(url) }
+                else if url.path.hasPrefix("/api/qq/") { result = try await qq.handle(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/kugou/") { result = try await kugou.handle(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/qishui/") { result = try await qishuiAPI(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/spotify/") { result = try await spotify.handle(url, method: method, body: body) }

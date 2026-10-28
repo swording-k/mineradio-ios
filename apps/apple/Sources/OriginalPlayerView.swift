@@ -23,6 +23,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDiagnostics")
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleSaveImage")
         if nowPlaying != nil {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleNowPlaying")
             if nativeControlBar {
@@ -157,6 +158,12 @@ struct OriginalPlayerView: UIViewRepresentable {
             if message.name == "appleDiagnostics", let input = message.body as? [String: Any] {
                 AppleDiagnostics.shared.recordWeb(input)
                 replyHandler(["recorded": true], nil); return
+            }
+            if message.name == "appleSaveImage", let input = message.body as? [String: Any],
+               let text = input["dataURL"] as? String, text.hasPrefix("data:image/png;base64,"), text.count < 4_000_000,
+               let data = Data(base64Encoded: String(text.dropFirst("data:image/png;base64,".count))), let image = UIImage(data: data) {
+                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                replyHandler(["saved": true], nil); return
             }
             if message.name == "appleNowPlaying", let input = message.body as? [String: Any] {
                 parent.nowPlaying?.receive(input)

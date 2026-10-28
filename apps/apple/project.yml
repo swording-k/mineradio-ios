@@ -69,6 +69,7 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        NSPhotoLibraryAddUsageDescription: 保存登录二维码到相册，方便在手机 QQ 中从相册识别扫码。
         NSLocalNetworkUsageDescription: 连接你配置的开发电脑，运行原版 Mineradio 网页与音乐接口。
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
