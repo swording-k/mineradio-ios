@@ -1,6 +1,7 @@
 import Foundation
 import CoreImage
-import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 
 /// QQ 音乐 / 酷狗直连扫码登录（与网易云同一种方式：App 自己取二维码、自己轮询结果，不打开网页）。
 /// 协议平行移植自 Mineradio-Android nodejs-project-src/qr-login-providers.js（其注释：移植自 folia Android）。
@@ -242,8 +243,11 @@ actor AppleDirectQrLogin {
         guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return "" }
         filter.setValue(Data(text.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
-              let cg = CIContext().createCGImage(output, from: output.extent),
-              let png = UIImage(cgImage: cg).pngData() else { return "" }
-        return "data:image/png;base64," + png.base64EncodedString()
+              let cg = CIContext().createCGImage(output, from: output.extent) else { return "" }
+        let png = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil) else { return "" }
+        CGImageDestinationAddImage(dest, cg, nil)
+        guard CGImageDestinationFinalize(dest) else { return "" }
+        return "data:image/png;base64," + (png as Data).base64EncodedString()
     }
 }
