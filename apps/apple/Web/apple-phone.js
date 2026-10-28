@@ -135,7 +135,9 @@
     if (typeof loginProviderClickSuppressed !== 'undefined') loginProviderClickSuppressed = false;
     if (typeof hasLoginWorkflowConnection === 'function' && hasLoginWorkflowConnection(provider)) {
       if (typeof selectLoginProviderNode === 'function') selectLoginProviderNode(provider);
-    } else connectLoginProviderToMr(provider);
+    } else connectLoginProviderToMr(provider);   // 内部会展开登录区并开始出码
+    // 点哪个平台就直接展开它的登录区，不要求先拖线（已连接的平台也展开，便于重新登录）。
+    if (typeof setLoginAuthDrawerOpen === 'function') setLoginAuthDrawerOpen(true);
     // 登录详情在列表下方，竖屏屏幕放不下：自动滚到登录区域，并重画连线。
     setTimeout(function () {
       var drawer = document.getElementById('login-auth-drawer');
@@ -149,6 +151,14 @@
     /* 竖屏：MR 节点在平台列表正下方。把平台的输出端口移到左侧，与 MR 输入端口同一列，
        连线变成左侧一条竖向导轨，不再横穿卡片、不压「展示」开关；拖线与点卡片都能连接。 */
     @media (max-width: 767px) and (orientation: portrait) {
+      /* 登录详情：原版是「文字 1fr + 二维码 168px」两列、最高 420px，竖屏手机放不下且被截断。改单列、不限高。 */
+      body.apple-client #login-auth-drawer.show { grid-template-columns: minmax(0, 1fr) !important; justify-items: center; max-height: none !important; margin-top: 12px; }
+      body.apple-client #login-auth-drawer .login-auth-copy { width: 100%; text-align: center; }
+      body.apple-client #login-auth-drawer .login-auth-copy #qr-status { text-align: center; }
+      body.apple-client #login-auth-drawer .login-auth-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+      body.apple-client #login-auth-drawer .login-auth-actions .modal-btn { flex: 0 0 auto; white-space: nowrap; }
+      /* 「退出登录」原版绝对定位在右上角，竖屏会压住第一个平台卡片和关闭按钮：改为放在列表上方右侧。 */
+      body.apple-client #login-modal .login-reset-all-btn { position: static !important; display: block; margin: 0 52px 10px auto; transform: none !important; }
       body.apple-client #login-node-graph .login-node-providers .flow-port.out { right: auto !important; left: -24px !important; }
       body.apple-client #login-node-graph .flow-port { touch-action: none; }
       body.apple-client #login-node-graph .login-node-providers [data-login-provider] { cursor: pointer; }
