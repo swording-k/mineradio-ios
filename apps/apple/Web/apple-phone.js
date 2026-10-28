@@ -164,6 +164,39 @@
       body.apple-client #login-node-graph .login-node-providers [data-login-provider] { cursor: pointer; }
     }`;
   document.head.appendChild(loginStyle);
+  // 竖屏手机登录提示：连线界面横屏更好用。提供一键转横屏，关闭登录弹窗后恢复原方向。
+  var loginModal = document.getElementById('login-modal');
+  var dialog = loginModal && loginModal.querySelector('.dual-login-modal');
+  if (dialog) {
+    var tip = document.createElement('div');
+    tip.id = 'apple-login-rotate-tip';
+    tip.innerHTML = '<span>横屏登录更方便：可直接把平台拖线到 MR。竖屏也可以直接点平台卡片登录。</span>' +
+      '<button type="button" class="fx-mini-btn ghost">切到横屏登录</button>';
+    tip.querySelector('button').addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (typeof window.__mineradioAppleTempOrientation === 'function') window.__mineradioAppleTempOrientation('landscape');
+    });
+    dialog.insertBefore(tip, dialog.firstChild);
+    var wasOpen = false;
+    new MutationObserver(function () {
+      var open = loginModal.classList.contains('show');
+      if (wasOpen && !open && typeof window.__mineradioAppleTempOrientation === 'function') window.__mineradioAppleTempOrientation('');
+      wasOpen = open;
+    }).observe(loginModal, {attributes: true, attributeFilter: ['class']});
+    var tipStyle = document.createElement('style');
+    tipStyle.textContent = `
+      #apple-login-rotate-tip { display: none; }
+      @media (max-width: 767px) and (orientation: portrait) {
+        body.apple-client #login-modal:not(.login-easter-egg-locked) #apple-login-rotate-tip {
+          display: flex; align-items: center; gap: 10px; margin: 0 44px 12px 0; padding: 10px 12px;
+          border-radius: 14px; border: 1px solid rgba(244, 210, 138, .28); background: rgba(244, 210, 138, .08);
+          color: rgba(255, 244, 214, .9); font-size: 12px; line-height: 1.45;
+        }
+        body.apple-client #apple-login-rotate-tip span { flex: 1 1 auto; min-width: 0; }
+        body.apple-client #apple-login-rotate-tip button { flex: 0 0 auto; white-space: nowrap; height: 32px; padding: 0 12px; }
+      }`;
+    document.head.appendChild(tipStyle);
+  }
   // 触屏没有“鼠标移开”，去掉这句桌面提示。
   var sub = document.querySelector('#playlist-panel .queue-head .fx-sub');
   if (sub && /鼠标/.test(sub.textContent || '')) sub.textContent = 'QUEUE';

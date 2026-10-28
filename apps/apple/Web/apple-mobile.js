@@ -53,11 +53,14 @@
   try { Object.assign(prefs, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (_) {}
   prefs.sleepMinutes = 0; // 睡眠定时每次启动都关闭
   function save() { try { localStorage.setItem(KEY, JSON.stringify({keepAwake: prefs.keepAwake, haptics: prefs.haptics, orientation: prefs.orientation})); } catch (_) {} }
+  var tempOrientation = '';
   function pushNative() {
     if (handlers && handlers.appleDevice) {
-      try { handlers.appleDevice.postMessage({keepAwake: !!prefs.keepAwake && typeof playing !== 'undefined' && !!playing, haptics: !!prefs.haptics, orientation: prefs.orientation}); } catch (_) {}
+      try { handlers.appleDevice.postMessage({keepAwake: !!prefs.keepAwake && typeof playing !== 'undefined' && !!playing, haptics: !!prefs.haptics, orientation: tempOrientation || prefs.orientation}); } catch (_) {}
     }
   }
+  // 临时方向（如登录时转横屏）；传空字符串恢复用户设置。
+  window.__mineradioAppleTempOrientation = function (value) { tempOrientation = value || ''; pushNative(); };
   window.__mineradioAppleHaptic = function () { return !!prefs.haptics; };
   var sleepTimer = 0, sleepAt = 0;
   function setSleep(minutes) {
