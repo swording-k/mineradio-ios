@@ -166,7 +166,7 @@
       max-height: calc(var(--apple-visible-height, 100dvh) - var(--apple-safe-top) - var(--apple-safe-bottom) - 124px);
       overflow-y: auto; overscroll-behavior: contain; z-index: 1600;
     }
-    body.apple-client .apple-panel-close { display: block; position: sticky; top: 0; margin-left: auto; z-index: 2; min-width: 64px; min-height: 44px; color: inherit; background: #222; border: 1px solid #555; border-radius: 12px; }
+    body.apple-client .apple-panel-close { display: block; position: sticky; top: 0; margin-left: auto; z-index: 2; min-width: 56px; min-height: 36px; padding: 0 14px; }
     body.apple-client #fx-panel.peek, body.apple-client #playlist-panel.peek, body.apple-client #fx-panel.show, body.apple-client #playlist-panel.show { transform: none; }
     body.apple-client .modal-mask { box-sizing: border-box; padding: calc(var(--apple-safe-top) + 12px) calc(var(--apple-safe-right) + 12px) calc(var(--apple-safe-bottom) + 12px) calc(var(--apple-safe-left) + 12px); z-index: 2000; }
     body.apple-client .modal-mask > .modal {
@@ -215,7 +215,7 @@
     var panel = document.getElementById(entry[0]);
     if (!panel) return;
     var close = document.createElement('button');
-    close.type = 'button'; close.className = 'apple-panel-close'; close.textContent = '关闭';
+    close.type = 'button'; close.className = 'apple-panel-close fx-mini-btn ghost'; close.textContent = '关闭';
     close.setAttribute('aria-label', entry[0] === 'fx-panel' ? '关闭视觉控制台' : '关闭歌单面板');
     close.addEventListener('click', entry[1]); panel.prepend(close);
   });

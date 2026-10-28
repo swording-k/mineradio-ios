@@ -88,7 +88,7 @@
   extra.textContent = `
     body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close { position: sticky; }
     body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close > .apple-panel-close {
-      position: absolute; top: 6px; right: 6px; margin: 0; min-width: 56px; min-height: 40px; border-radius: 12px;
+      position: absolute; top: 6px; right: 6px; margin: 0; min-width: 52px; min-height: 32px; height: 32px; padding: 0 12px;
     }
     body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close .queue-head { padding-right: 64px; }`;
   document.head.appendChild(extra);
@@ -136,12 +136,21 @@
     if (typeof hasLoginWorkflowConnection === 'function' && hasLoginWorkflowConnection(provider)) {
       if (typeof selectLoginProviderNode === 'function') selectLoginProviderNode(provider);
     } else connectLoginProviderToMr(provider);
+    // 登录详情在列表下方，竖屏屏幕放不下：自动滚到登录区域，并重画连线。
+    setTimeout(function () {
+      var drawer = document.getElementById('login-auth-drawer');
+      if (drawer && drawer.scrollIntoView) drawer.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+      if (typeof scheduleLoginWorkflowEdges === 'function') scheduleLoginWorkflowEdges('apple-tap');
+    }, 200);
   }, true);
   var loginStyle = document.createElement('style');
   loginStyle.textContent = `
     body.apple-client #login-node-graph [data-login-provider-sort] { touch-action: none; }
+    /* 竖屏：MR 节点在平台列表正下方。把平台的输出端口移到左侧，与 MR 输入端口同一列，
+       连线变成左侧一条竖向导轨，不再横穿卡片、不压「展示」开关；拖线与点卡片都能连接。 */
     @media (max-width: 767px) and (orientation: portrait) {
-      body.apple-client #login-node-graph .flow-port, body.apple-client #login-workflow-svg { display: none !important; }
+      body.apple-client #login-node-graph .login-node-providers .flow-port.out { right: auto !important; left: -24px !important; }
+      body.apple-client #login-node-graph .flow-port { touch-action: none; }
       body.apple-client #login-node-graph .login-node-providers [data-login-provider] { cursor: pointer; }
     }`;
   document.head.appendChild(loginStyle);
