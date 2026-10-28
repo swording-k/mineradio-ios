@@ -74,6 +74,13 @@
     body.apple-client #playlist-panel .queue-head .fx-sub { display: none; }
     body.apple-client #playlist-panel .queue-head { margin-bottom: 2px; }
     body.apple-client #playlist-panel .panel-tab { min-height: 36px !important; }
+  }
+  /* iPad 竖屏 / 分屏：原版桌面首页右栏只有约 450px，信息卡两列会把“音乐发现”挤成一字一行、数字截成省略号。
+     这里让右栏信息卡改为单列，每张卡占满右栏宽度，内容与原版一致。 */
+  @media (min-width: 768px) and (max-width: 1180px) and (orientation: portrait) {
+    body.apple-client #empty-home .home-insight-dock { grid-template-columns: minmax(0, 1fr) !important; }
+    body.apple-client #empty-home .home-ranking-entry { min-height: 94px; }
+    body.apple-client #empty-home .home-ranking-entry-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   }`;
   document.head.appendChild(style);
   // “关闭”放进歌单面板的吸顶头部右上角，避免压住“常开 / 随机”按钮，并且列表滚动时仍可点到。
