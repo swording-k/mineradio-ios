@@ -9,12 +9,16 @@ struct NativeControlBar: View {
     @State private var scrubValue = 0.0
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var state: NowPlayingModel.State { model.state }
+    /// iPad（横竖屏）与 iPhone 横屏宽度足够，用单行布局；iPhone 竖屏用三行。
+    private var wide: Bool { verticalSizeClass == .compact || horizontalSizeClass == .regular }
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         Group {
-            if verticalSizeClass == .compact { landscapeBar } else { portraitBar }
+            if wide { landscapeBar } else { portraitBar }
         }
         .foregroundStyle(.white)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -34,7 +38,7 @@ struct NativeControlBar: View {
                         Text(state.trial ? "试听片段 · " + state.artist : state.artist)
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.62)).lineLimit(1)
                     }
-                    .frame(width: 150, alignment: .leading)
+                    .frame(width: isPad ? 260 : 150, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
@@ -49,7 +53,7 @@ struct NativeControlBar: View {
             else { control("music.note.list", "歌单与播放队列", size: 17) { model.command("library") } }
             moreMenu
         }
-        .padding(.horizontal, 12).padding(.vertical, 6)
+        .padding(.horizontal, isPad ? 18 : 12).padding(.vertical, isPad ? 10 : 6)
     }
 
     private func playButton(size: CGFloat) -> some View {

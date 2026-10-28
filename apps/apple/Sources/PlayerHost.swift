@@ -23,9 +23,9 @@ struct PlayerHost: View {
                 if nativeBar && nowPlaying.showsBar && nowPlaying.barVisible && failure == nil {
                     VStack {
                         Spacer()
+                        // 控制条横向铺满（左右留安全边距），iPad 横屏不再只占一部分宽度。
                         NativeControlBar(model: nowPlaying)
-                            .frame(maxWidth: 760)
-                            .padding(.horizontal, 10).padding(.bottom, 4)
+                            .padding(.horizontal, UIDevice.current.userInterfaceIdiom == .pad ? 20 : 10).padding(.bottom, 4)
                             .background(GeometryReader { proxy in
                                 Color.clear.onAppear { reportBarHeight(proxy) }
                                     .onChange(of: proxy.size.height) { _, _ in reportBarHeight(proxy) }
