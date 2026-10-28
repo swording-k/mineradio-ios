@@ -83,7 +83,10 @@
     if (gen !== generation) return;
     var status = result && result.status;
     if (status === 'ok' && result.loggedIn) return finish(provider, result);
-    if (status === 'ok') { setStatus('已确认，但账号校验未通过：' + (result.message || '请刷新二维码重试'), 'fail'); return; }
+    if (status === 'ok') {
+      var why = result.message && result.message !== '登录成功' ? result.message : '请刷新二维码重试';
+      setStatus('扫码已确认，但账号校验未通过：' + why + (result.reason ? '（' + result.reason + '）' : ''), 'fail'); return;
+    }
     if (status === 'expired') { setStatus('二维码已过期，点「刷新二维码」', 'fail'); return; }
     if (status === 'error') { setStatus(result.message || '登录失败，请刷新二维码', 'fail'); return; }
     if (status === 'scanned') setStatus(result.message || '已扫码，请在手机上确认', 'scan');
@@ -135,8 +138,11 @@
   var style = document.createElement('style');
   style.textContent = [
     'body.apple-client [data-login-provider="spotify"], body.apple-client .top-account-pill[data-account-provider="spotify"] { display: none !important; }',
-    'body.apple-client #apple-qr-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 10px 0 4px; }',
-    'body.apple-client #apple-qr-actions .fx-mini-btn { min-height: 36px; padding: 0 14px; }'
+    // 按钮放在二维码下方独占一行：横向排列、文字不换行，窄时自动换到下一行而不是被挤成竖排。
+    'body.apple-client #apple-qr-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center;',
+    '  width: max-content; max-width: min(340px, 86vw); justify-self: center; box-sizing: border-box; margin: 10px 0 4px; }',
+    'body.apple-client #apple-qr-actions .fx-mini-btn { flex: 0 0 auto; width: auto !important; min-width: 0; height: 34px; padding: 0 14px;',
+    '  white-space: nowrap; writing-mode: horizontal-tb; font-size: 12px; line-height: 34px; }'
   ].join('\n');
   document.head.appendChild(style);
 })();

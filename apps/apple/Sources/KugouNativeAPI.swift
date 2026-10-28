@@ -80,9 +80,24 @@ actor KugouNativeAPI {
     private func gateway(_ path: String, body: [String: Any], extra: [String: String] = [:]) async throws -> [String: Any] {
         guard !auth.uid.isEmpty, !auth.token.isEmpty else { throw KugouFailure.invalidInput }
         let bytes = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys, .withoutEscapingSlashes])
+        // 平行参考安卓 kugouCloudlistRequest：扫码 token 只认酷狗极速版（appid 3116）lite 签名，
+        // 旧 H5 / 1005 签名会报 20017/20006。先 lite，失败再回退 H5（兼容旧的网页 Cookie 会话）。
+        if let lite = try? await liteGateway(path, bytes: bytes, extra: extra), KugouContract.number(lite["status"]) == 1 { return lite }
         var params = h5Params(["plat": "1"].merging(extra) { _, value in value })
         params["signature"] = KugouContract.signature(params, body: String(decoding: bytes, as: UTF8.self))
         return try await request("gateway.kugou.com", path, params: params, body: bytes, router: "cloudlist.service.kugou.com")
+    }
+    private func liteGateway(_ path: String, bytes: Data, extra: [String: String]) async throws -> [String: Any] {
+        let a = auth, now = String(Int(Date().timeIntervalSince1970))
+        let mid = KugouContract.liteMid(a.uid.isEmpty ? a.token : a.uid)
+        var params = ["dfid": a.dfid, "mid": mid, "uuid": "-", "appid": "3116", "clientver": "11440", "clienttime": now,
+                      "token": a.token, "userid": a.uid, "plat": "1"].merging(extra) { _, value in value }
+        params["signature"] = KugouContract.md5("LnT6xpN3khm36zse0QzvmgTZ3waWdRSA" + params.keys.sorted().map { "\($0)=\(params[$0]!)" }.joined()
+                                                + String(decoding: bytes, as: UTF8.self) + "LnT6xpN3khm36zse0QzvmgTZ3waWdRSA")
+        return try await request("gateway.kugou.com", path, params: params, body: bytes, router: "cloudlist.service.kugou.com",
+                                 headers: ["User-Agent": "Android15-1070-11083-46-0-DiscoveryDRADProtocol-wifi", "dfid": a.dfid, "mid": mid,
+                                           "clienttime": now, "kg-rc": "1", "kg-thash": "5d816a0", "kg-rec": "1",
+                                           "kg-rf": "B9EDA08A64250DEFFBCADDEE00F8F25F", "Authorization": "KugooToken " + a.token])
     }
     private func signedWeb(_ host: String, hash: String, album: String, audio: String) async throws -> [String: Any] {
         var params = h5Params(["uuid": auth.mid, "platid": "4", "hash": hash, "album_id": album.isEmpty ? "0" : album])
@@ -103,7 +118,8 @@ actor KugouNativeAPI {
     private func unavailableStatus(_ reason: String = "not_connected") -> [String: Any] {
         ["provider": "kugou", "loggedIn": false, "configured": true, "supported": true, "libraryReady": false,
          "playbackReady": false, "playbackKeyReady": false, "membershipKnown": false, "membershipVerified": false,
-         "status": reason, "message": "请在酷狗官方登录窗口登录，账号将通过官方接口验证。"]
+         "status": reason, "reason": reason,
+         "message": reason == "not_connected" ? "请扫码登录酷狗音乐，账号将通过官方接口验证。" : "酷狗未通过账号校验，请刷新二维码重新扫码。"]
     }
     private func status(force: Bool = false) async throws -> [String: Any] {
         if !force, Date().timeIntervalSince(checkedAt) < 15, let account { return account }

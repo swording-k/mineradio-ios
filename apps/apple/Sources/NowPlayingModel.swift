@@ -90,19 +90,32 @@ import UIKit
                                    MPNowPlayingInfoPropertyElapsedPlaybackTime: state.current,
                                    MPNowPlayingInfoPropertyPlaybackRate: state.playing ? 1.0 : 0.0]
         if state.duration > 0 { info[MPMediaItemPropertyPlaybackDuration] = state.duration }
+        // 灵动岛 / 锁屏 / 控制中心：有封面用封面，封面还没下载好或没有时用 App 图标，不留空白。
         if let artwork, artworkURL == state.cover { info[MPMediaItemPropertyArtwork] = artwork }
+        else if let fallback = Self.fallbackArtwork { info[MPMediaItemPropertyArtwork] = fallback }
+        info[MPMediaItemPropertyAlbumTitle] = "Mineradio"
         center.nowPlayingInfo = info
         center.playbackState = state.playing ? .playing : .paused
         if trackChanged { loadArtwork(state.cover) }
     }
 
+    private static let fallbackArtwork: MPMediaItemArtwork? = {
+        guard let image = UIImage(named: "AppIcon") ?? NowPlayingModel.bundleIcon() else { return nil }
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }()
+    private static func bundleIcon() -> UIImage? {
+        guard let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
+              let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+              let files = primary["CFBundleIconFiles"] as? [String], let name = files.last else { return nil }
+        return UIImage(named: name)
+    }
     private func loadArtwork(_ link: String) {
         artworkURL = link; artwork = nil
-        guard let url = URL(string: link), url.scheme == "https" else { return }
+        guard let url = URL(string: link), url.scheme == "https", AppleMediaPolicy.allowed(url) else { return }
         Task { [weak self] in
-            guard let (data, response) = try? await URLSession.shared.data(from: url),
-                  (response as? HTTPURLResponse)?.statusCode == 200, data.count < 4 * 1024 * 1024,
-                  let image = UIImage(data: data) else { return }
+            // 复用封面缓存（带各平台需要的 Referer，避免防盗链导致灵动岛 / 锁屏没有封面）。
+            guard let cached = await AppleCoverCache.shared.image(for: url, referer: AppleMediaPolicy.referer(url)),
+                  let image = UIImage(data: cached.data) else { return }
             await MainActor.run {
                 guard let self, self.artworkURL == link else { return }
                 self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }

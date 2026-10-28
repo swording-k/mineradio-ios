@@ -42,8 +42,15 @@
     try { var v = typeof fn === 'function' ? Number(fn()) : 0; return isFinite(v) && v > 0 ? v : 0; } catch (_) { return 0; }
   }
   function coverOf(song) {
-    var raw = song && (song.cover || song.picUrl || (song.al && song.al.picUrl) || (song.album && song.album.picUrl)) || '';
+    var raw = song && (song.customCover || song.cover || song.picUrl || (song.al && song.al.picUrl) || (song.album && song.album.picUrl)) || '';
     raw = String(raw || '');
+    // 前端常把封面写成本地代理地址 /api/cover?url=…，或只在左下角缩略图里有地址：都还原成真实图片地址。
+    if (!/^https?:\/\//i.test(raw)) {
+      var thumb = document.getElementById('thumb-cover');
+      if (!raw && thumb && thumb.getAttribute('src')) raw = thumb.getAttribute('src');
+      var m = /[?&]url=([^&]+)/.exec(raw);
+      if (m) { try { raw = decodeURIComponent(m[1]); } catch (_) {} }
+    }
     if (!/^https?:\/\//i.test(raw)) return '';
     return raw.replace(/^http:\/\//i, 'https://').slice(0, 2048);
   }
