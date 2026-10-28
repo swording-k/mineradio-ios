@@ -51,13 +51,31 @@
     actions(provider, data);
   }
 
+  // 每次出码 / 轮询都绑定一个可取消的请求组：切平台、重新出码、关闭弹窗时立即取消旧请求。
+  // 否则旧的酷狗长轮询会占住 WebKit 对本机服务的连接（每个主机最多 6 条），新二维码请求排队卡在「正在生成」。
+  var inflight = null;
+  function cancelInflight() { if (inflight) { try { inflight.abort(); } catch (_) {} inflight = null; } }
+  function request(url, timeoutMs) {
+    var controller = inflight || (inflight = new AbortController());
+    var timer = new AbortController(), t = setTimeout(function () { timer.abort(); }, timeoutMs);
+    var signal = controller.signal;
+    if (typeof AbortSignal !== 'undefined' && AbortSignal.any) signal = AbortSignal.any([controller.signal, timer.signal]);
+    else timer.signal.addEventListener('abort', function () { controller.abort(); });
+    return fetch(url, {signal: signal}).then(function (r) { return r.json(); }).finally(function () { clearTimeout(t); });
+  }
   async function start(provider) {
     var gen = ++generation;
+    cancelInflight();
     active = {provider: provider};
     if (typeof stopQrPoll === 'function') stopQrPoll();
     setStatus('正在生成二维码…', 'preview');
+    actions(provider, null);
     try {
-      var data = await apiJson('/api/apple/qr/' + provider + '/create?t=' + Date.now(), {timeoutMs: 15000});
+      var data = null;
+      for (var attempt = 0; attempt < 2 && !(data && data.img); attempt++) {
+        try { data = await request('/api/apple/qr/' + provider + '/create?t=' + Date.now(), 10000); }
+        catch (err) { if (gen !== generation) return; if (attempt === 1) throw err; }
+      }
       if (gen !== generation) return;
       if (!data || !data.img) throw new Error((data && (data.message || data.error)) || '生成二维码失败');
       active.data = data;
@@ -66,20 +84,21 @@
       poll(provider, gen);
     } catch (e) {
       if (gen !== generation) return;
-      setStatus('出错：' + (e && e.message || e), 'fail');
+      var msg = e && e.name === 'AbortError' ? '网络较慢，二维码生成超时' : (e && e.message || e);
+      setStatus('出错：' + msg + '，点「刷新二维码」重试', 'fail');
       actions(provider, null);
     }
   }
   async function poll(provider, gen) {
     if (gen !== generation || !active || active.provider !== provider) return;
-    if (typeof loginProvider !== 'undefined' && loginProvider !== provider) { generation++; active = null; actions(null); return; }
+    if (typeof loginProvider !== 'undefined' && loginProvider !== provider) { generation++; cancelInflight(); active = null; actions(null); return; }
     var modal = el('login-modal');
-    if (modal && !modal.classList.contains('show')) { generation++; return; }
+    if (modal && !modal.classList.contains('show')) { generation++; cancelInflight(); return; }
     var d = active.data, url = provider === 'qq'
       ? '/api/apple/qr/qq/check?qrsig=' + encodeURIComponent(d.qrsig) + '&ptqrtoken=' + encodeURIComponent(d.ptqrtoken)
       : '/api/apple/qr/kugou/check?key=' + encodeURIComponent(d.key);
     var result = null;
-    try { result = await apiJson(url + '&t=' + Date.now(), {timeoutMs: provider === 'kugou' ? 50000 : 20000}); } catch (_) {}
+    try { result = await request(url + '&t=' + Date.now(), provider === 'kugou' ? 20000 : 15000); } catch (_) {}
     if (gen !== generation) return;
     var status = result && result.status;
     if (status === 'ok' && result.loggedIn) return finish(provider, result);
@@ -90,10 +109,11 @@
     if (status === 'expired') { setStatus('二维码已过期，点「刷新二维码」', 'fail'); return; }
     if (status === 'error') { setStatus(result.message || '登录失败，请刷新二维码', 'fail'); return; }
     if (status === 'scanned') setStatus(result.message || '已扫码，请在手机上确认', 'scan');
-    setTimeout(function () { poll(provider, gen); }, provider === 'kugou' ? 300 : 2000);
+    setTimeout(function () { poll(provider, gen); }, provider === 'kugou' ? 1200 : 2000);
   }
   function finish(provider, info) {
     generation++;
+    cancelInflight();
     actions(null);
     if (provider === 'qq') {
       qqLoginStatus = normalizeQQLoginStatus(info);
@@ -127,9 +147,19 @@
         showQr(p, active.data);
         var s = el('qr-status'); if (s && lastStatus) { s.textContent = lastStatus[0]; s.className = lastStatus[1]; }
       }
-      else if (p !== 'qq' && p !== 'kugou') actions(null);
+      else if (p !== 'qq' && p !== 'kugou') { actions(null); if (active) { generation++; cancelInflight(); active = null; } }
       var card = el('qq-web-login-card'), label = card && card.querySelector('span');
-      if (label && (p === 'qq' || p === 'kugou')) label.textContent = '显示登录二维码';
+      if (p === 'qq' || p === 'kugou') {
+        if (card) card.disabled = false;
+        if (label) label.textContent = '显示登录二维码';
+        // 已登录时原版「刷新状态」只查状态、不出码，导致无法重新扫码。统一改为直接出码。
+        var refresh = el('refresh-qr-btn');
+        if (refresh) {
+          refresh.disabled = false;
+          refresh.textContent = active && active.provider === p ? '刷新二维码' : '扫码登录';
+          refresh.onclick = function () { start(p); };
+        }
+      }
       return r;
     };
   }

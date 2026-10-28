@@ -207,11 +207,12 @@ actor AppleDirectQrLogin {
         guard !key.isEmpty, key.count < 256 else { return (["status": "expired", "message": "缺少二维码 key"], []) }
         let body: [String: Any]
         do {
-            body = try await kgSignedGet("/v2/get_userinfo_qrcode", ["plat": "4", "appid": "3116", "srcappid": "2919", "qrcode": key], timeout: 45)
+            // 手机上不做 45 秒长轮询：长连接会占满页面到本机服务的连接，阻塞其它请求。
+            body = try await kgSignedGet("/v2/get_userinfo_qrcode", ["plat": "4", "appid": "3116", "srcappid": "2919", "qrcode": key], timeout: 12)
             kgTimeouts[key] = nil
         } catch {
             let n = (kgTimeouts[key] ?? 0) + 1; kgTimeouts[key] = n
-            return n < 3 ? (["status": "wait", "message": "请用酷狗 App 扫码"], []) : (["status": "error", "message": "酷狗登录检查失败，请刷新二维码"], [])
+            return n < 6 ? (["status": "wait", "message": "请用酷狗 App 扫码"], []) : (["status": "error", "message": "酷狗登录检查失败，请刷新二维码"], [])
         }
         let data = body["data"] as? [String: Any] ?? [:]
         let status = Int("\(data["status"] ?? body["status"] ?? 0)") ?? 0
