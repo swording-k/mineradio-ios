@@ -27,6 +27,7 @@ import UIKit
     var showsBar: Bool { state.hasSong && !state.splash && !state.modal && !state.webBar && !state.panel }
 
     func command(_ name: String, _ value: Any? = nil) {
+        if ["toggle", "next", "prev", "like"].contains(name) { AppleDeviceSettings.shared.tap() }
         send?(name, value)
         reveal()
     }

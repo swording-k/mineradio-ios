@@ -24,6 +24,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDiagnostics")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleSaveImage")
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDevice")
         if nowPlaying != nil {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleNowPlaying")
             if nativeControlBar {
@@ -165,6 +166,12 @@ struct OriginalPlayerView: UIViewRepresentable {
                 UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
                 replyHandler(["saved": true], nil); return
             }
+            if message.name == "appleDevice", let input = message.body as? [String: Any] {
+                AppleDeviceSettings.shared.apply(keepAwake: input["keepAwake"] as? Bool ?? false,
+                                                 haptics: input["haptics"] as? Bool ?? true,
+                                                 orientation: input["orientation"] as? String ?? "auto")
+                replyHandler(nil, nil); return
+            }
             if message.name == "appleNowPlaying", let input = message.body as? [String: Any] {
                 parent.nowPlaying?.receive(input)
                 replyHandler(nil, nil); return
@@ -249,7 +256,10 @@ struct OriginalPlayerView: UIViewRepresentable {
             recoveries = recoveries.filter { now.timeIntervalSince($0) < 180 } + [now]
             pressureLevel = min(3, pressureLevel + 1)
             if recoveries.count <= 2 {
-                webView.reload()
+                // 带上恢复标记重新加载：页面会跳过启动页并按上次保存的进度续播，而不是从头开始。
+                var c = URLComponents(url: parent.endpoint, resolvingAgainstBaseURL: false)
+                c?.queryItems = [URLQueryItem(name: "apple-recover", value: "1")]
+                if let url = c?.url { webView.load(URLRequest(url: url, timeoutInterval: 20)) } else { webView.reload() }
             } else {
                 parent.failure = "播放器页面多次被系统回收（内存不足）。请点重试；建议在视觉控制台降低画质档位。"
             }

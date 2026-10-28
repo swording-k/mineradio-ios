@@ -33,7 +33,7 @@ function buildWebBundle(publicDir, outputDir, adapterPath) {
 module.exports = { buildWebBundle };
 if (require.main === module) {
   const root = path.resolve(__dirname, '../../..');
-  const adapters = ['runtime', 'login', 'layout', 'power', 'speed', 'spotify', 'diagnostics', 'memory', 'media', 'native-controls', 'phone', 'library', 'direct-login']
+  const adapters = ['runtime', 'login', 'layout', 'power', 'speed', 'spotify', 'diagnostics', 'memory', 'media', 'native-controls', 'phone', 'library', 'direct-login', 'mobile']
     .map(name => path.resolve(__dirname, `../Web/apple-${name}.js`));
   const result = buildWebBundle(path.join(root, 'public'), path.resolve(__dirname, '../GeneratedWeb'), adapters);
   process.stdout.write(`Apple web bundle: ${result.moduleCount} original modules, ${result.bytes} bytes\n`);
