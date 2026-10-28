@@ -7,8 +7,8 @@ struct PlayerHost: View {
     @State private var failure: String?
     @State private var revision = UUID()
     @StateObject private var nowPlaying = NowPlayingModel()
-    /// iPhone 使用原生控制条；iPad 保留已验收的原版控制条布局。
-    private let nativeBar = UIDevice.current.userInterfaceIdiom == .phone
+    /// iPhone 与 iPad 统一使用原生控制条（同一套代码、同一种交互）。
+    private let nativeBar = true
 
     var body: some View {
         ZStack(alignment: .topLeading) {

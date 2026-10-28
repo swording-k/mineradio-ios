@@ -23,7 +23,8 @@ import UIKit
     private var artwork: MPMediaItemArtwork?
     private var commandsInstalled = false
 
-    var showsBar: Bool { state.hasSong && !state.immersive && !state.splash && !state.modal && !state.webBar && !state.panel }
+    /// 沉浸模式不再永久隐藏控制条：默认收起，点一下画面即出现（含「退出沉浸」），否则用户无法暂停或退出。
+    var showsBar: Bool { state.hasSong && !state.splash && !state.modal && !state.webBar && !state.panel }
 
     func command(_ name: String, _ value: Any? = nil) {
         send?(name, value)
@@ -45,10 +46,12 @@ import UIKit
             if next.duration > 0 { next.current = min(next.current, next.duration) }
             let started = next.playing && !state.playing
             let trackChanged = next.title != state.title || next.cover != state.cover
+            let immersionChanged = next.immersive != state.immersive
             state = next
             installRemoteCommands()
             updateSystemNowPlaying(trackChanged: trackChanged)
-            if started || !next.playing { reveal() }
+            if immersionChanged && next.immersive { barVisible = false; hideTask?.cancel() }
+            else if started || !next.playing || immersionChanged { reveal() }
         default: break
         }
     }
@@ -57,10 +60,11 @@ import UIKit
     func reveal() {
         barVisible = true
         hideTask?.cancel()
-        guard state.playing, state.autoHide else { return }
+        let immersive = state.immersive
+        guard immersive || (state.playing && state.autoHide) else { return }
         hideTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            guard !Task.isCancelled, let self, self.state.playing, self.state.autoHide else { return }
+            try? await Task.sleep(nanoseconds: immersive ? 4_000_000_000 : 6_000_000_000)
+            guard !Task.isCancelled, let self, self.state.immersive || (self.state.playing && self.state.autoHide) else { return }
             self.barVisible = false
         }
     }

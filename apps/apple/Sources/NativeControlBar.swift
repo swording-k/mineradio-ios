@@ -45,7 +45,8 @@ struct NativeControlBar: View {
             playButton(size: 44)
             control("forward.fill", "下一首", size: 17) { model.command("next") }
             control(state.liked ? "heart.fill" : "heart", "红心喜欢", size: 17, tint: state.liked ? Color(red: 1, green: 0.36, blue: 0.48) : .white) { model.command("like") }
-            control("music.note.list", "歌单与播放队列", size: 17) { model.command("library") }
+            if state.immersive { control("arrow.down.right.and.arrow.up.left", "退出沉浸模式", size: 17) { model.command("immersive") } }
+            else { control("music.note.list", "歌单与播放队列", size: 17) { model.command("library") } }
             moreMenu
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -66,7 +67,10 @@ struct NativeControlBar: View {
         Menu {
             Button { model.command("lyrics") } label: { Label("歌词", systemImage: "quote.bubble") }
             Button { model.command("mode") } label: { Label("切换播放顺序", systemImage: "repeat") }
-            Button { model.command("immersive") } label: { Label("沉浸模式", systemImage: "arrow.up.left.and.arrow.down.right") }
+            Button { model.command("immersive") } label: {
+                Label(state.immersive ? "退出沉浸模式" : "沉浸模式（点画面唤出控制条）",
+                      systemImage: state.immersive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+            }
             Button { model.command("webBar", true) } label: { Label("音质、音量与更多", systemImage: "slider.horizontal.3") }
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 18, weight: .semibold))
@@ -97,7 +101,8 @@ struct NativeControlBar: View {
             }
             progress
             HStack(spacing: 0) {
-                control("music.note.list", "歌单与播放队列", size: 18) { model.command("library") }
+                if state.immersive { control("arrow.down.right.and.arrow.up.left", "退出沉浸模式", size: 18) { model.command("immersive") } }
+                else { control("music.note.list", "歌单与播放队列", size: 18) { model.command("library") } }
                 Spacer(minLength: 4)
                 control("backward.fill", "上一首", size: 20) { model.command("prev") }
                 Spacer(minLength: 4)

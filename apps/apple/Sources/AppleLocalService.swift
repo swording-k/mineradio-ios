@@ -217,6 +217,8 @@ import UniformTypeIdentifiers
                 var request = URLRequest(url: target, timeoutInterval: 20)
                 request.httpMethod = method
                 request.setValue(AppleMediaPolicy.referer(target), forHTTPHeaderField: "Referer")
+                // 与取链 / 探测时一致的浏览器 UA，避免部分 CDN（QQ、酷狗）拒绝默认 CFNetwork UA。
+                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
                 if let range = headers["range"] { request.setValue(range, forHTTPHeaderField: "Range") }
                 // If the client disconnects or the source fails after headers,
                 // close the stream rather than append a second HTTP response.
