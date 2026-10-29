@@ -24,8 +24,41 @@ private actor CatalogFixture: QishuiCatalogRequesting {
         return ["data": [:]]
     }
 }
+private actor SEOFixture: QishuiCatalogRequesting {
+    let streams: [[String: Any]]
+    init(_ streams: [[String: Any]]) { self.streams = streams }
+    func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        if url.path == "/luna/pc/me" {
+            return ["data": ["my_info": ["user_id": "42"], "vip_info": ["is_vip": true, "vip_expire_time": 4102444800]]]
+        }
+        if url.path == "/luna/h5/seo_track" {
+            return ["data": ["track": ["id": "101", "duration_ms": 180000],
+                             "track_player": ["url_player_info": "https://vod.volcengineapi.com/?Action=GetPlayInfo"]]]
+        }
+        return ["data": [:]]
+    }
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        return ["Result": ["Data": ["PlayInfoList": streams]]]
+    }
+}
 @main struct QishuiCatalogTests {
     static func main() async throws {
+        let clear: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/clear.m4a", "Duration": 30, "Bitrate": 128000]
+        let cipher: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/encrypted.m4a", "Duration": 180, "Bitrate": 192000, "PlayAuth": "fixture-only"]
+        let nestedCipher: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/encrypted.m4a", "EncryptInfo": ["method": "fixture"]]
+        for (streams, expectedPlayable) in [([cipher], false), ([nestedCipher], false), ([clear, cipher], true)] {
+            let seoAPI = QishuiCatalogAPI(transport: SEOFixture(streams))
+            await seoAPI.setSession(["sessionid": "fixture"])
+            let result = try await seoAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+            precondition(result["playable"] as? Bool == expectedPlayable, "Encrypted SEO audio must not be advertised as HTMLAudio-playable")
+            if expectedPlayable {
+                precondition(result["url"] as? String == clear["MainPlayUrl"] as? String)
+                precondition(result["trial"] as? Bool == true)
+            } else {
+                precondition(result["reason"] as? String == "unsupported_encryption")
+                precondition(result["url"] == nil)
+            }
+        }
         let fixture = CatalogFixture()
         let api = QishuiCatalogAPI(transport: fixture)
         let anonymous = await api.validateAccount()

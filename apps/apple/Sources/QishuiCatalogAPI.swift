@@ -360,8 +360,12 @@ actor QishuiCatalogAPI {
         let isSvip = membership["isSvip"] as? Bool == true
 
         // 解析每条流，按码率升序，优先返回账号权限允许的最优可播流。
-        let streams = list.compactMap { QishuiStream(from: $0) }.sorted { $0.bitrate < $1.bitrate }
-        guard !streams.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
+        let candidates = list.compactMap { QishuiStream(from: $0) }
+        guard !candidates.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
+        // iOS 当前媒体代理只转发字节，没有 Android 的解密层。
+        // 把 PlayAuth 拼进 fragment 不会让 HTMLAudio 解密；优先选择真正可直接播放的流。
+        let streams = candidates.filter { !$0.encrypted }.sorted { $0.bitrate < $1.bitrate }
+        guard !streams.isEmpty else { return QishuiCatalogContract.playbackUnavailable("unsupported_encryption") }
 
         func allowed(_ tier: String) -> Bool {
             switch tier {
@@ -383,10 +387,10 @@ actor QishuiCatalogAPI {
         // 否则前端会以为完整歌曲的链接在 0:30 失效，反复「重新取链」。
         let trial = best.duration > 0 && (full > 0 ? best.duration + 5 < full : best.duration <= 61)
         return ["provider": "qishui", "source": "qishui-seo-player-info",
-                "url": best.url + (best.auth.isEmpty ? "" : "#auth=" + (best.auth.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? best.auth)),
+                "url": best.url,
                 "playable": true, "trial": trial, "duration": best.duration, "fullDuration": full,
                 "trialDuration": trial ? best.duration : 0, "level": best.requiredTier == "free" ? "standard" : "higher",
-                "br": best.bitrate, "encrypted": !best.auth.isEmpty,
+                "br": best.bitrate, "encrypted": false,
                 "message": trial ? "此音源为平台返回的试听片段。" : ""]
     }
     private func library() async throws -> [String: Any] {
@@ -468,6 +472,7 @@ actor QishuiCatalogAPI {
 struct QishuiStream {
     let url: String
     let auth: String
+    let encrypted: Bool
     let bitrate: Double
     let duration: Double
     let quality: String
@@ -482,6 +487,7 @@ struct QishuiStream {
               !["jpg", "jpeg", "png", "webp", "gif"].contains(mediaURL.pathExtension.lowercased()) else { return nil }
         url = link
         auth = str(["play_auth", "PlayAuth", "spade_a", "SpadeA"])
+        encrypted = !auth.isEmpty || !QishuiCatalogContract.firstDictionary(node["encrypt_info"], node["EncryptInfo"]).isEmpty
         let rawBitrate = num(["bitrate", "Bitrate", "real_bitrate", "RealBitrate", "br", "BR", "bit_rate", "BitRate"])
         bitrate = rawBitrate
         duration = QishuiCatalogContract.seconds(node["duration"] ?? node["Duration"])
