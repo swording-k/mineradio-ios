@@ -301,13 +301,23 @@ actor QishuiCatalogAPI {
         let cookie = cookies.filter { session.contains($0.key) }.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
         let headers = ["Accept": "application/json,text/plain,*/*", "Content-Type": "application/json; charset=utf-8",
                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) SodaMusic/3.1.0 Chrome/136.0.7103.59 Electron/36.4.0-rs.22.release.main.1 TTElectron/36.4.0-rs.22.release.main.1 Safari/537.36",
-                       "Cookie": cookie]
+                       "Cookie": cookie, "Referer": "https://www.qishui.com/"]
         let body = try JSONSerialization.data(withJSONObject: ["track_id": id, "media_type": "track", "queue_type": "favorite_track_playlist", "scene_name": "library"], options: [.sortedKeys])
         let expected = generation
-        let json = try await transport.post(components.url!, headers: headers, body: body)
-        guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
-        try QishuiCatalogContract.check(json)
-        return json
+        do {
+            let json = try await transport.post(components.url!, headers: headers, body: body)
+            guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
+            try QishuiCatalogContract.check(json)
+            return json
+        } catch {
+            guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
+            // Android retries the same Web identity with GET before falling back to SEO.
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "track_id", value: id), URLQueryItem(name: "media_type", value: "track")]
+            let json = try await transport.request(components.url!, headers: headers)
+            guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
+            try QishuiCatalogContract.check(json)
+            return json
+        }
     }
 
     /// 汽水整轨回退：seo_track → track_player.url_player_info → PlayerInfo → 可播 M4A。
@@ -319,7 +329,8 @@ actor QishuiCatalogAPI {
         // seo_track 返回里定位 track_player（可能在 data / 顶层 / track 下）。
         let root = QishuiCatalogContract.data(seo)
         NSLog("[QISHUI-DIAG] seo root keys = %@", root.keys.sorted().joined(separator: ","))
-        let track = QishuiCatalogContract.firstDictionary(root["track"], root["seo_track"], seo["track"])
+        let seoWrapper = QishuiCatalogContract.firstDictionary(root["seo_track"], seo["seo_track"])
+        let track = QishuiCatalogContract.firstDictionary(root["track"], seoWrapper["track"], seo["track"], seoWrapper)
         NSLog("[QISHUI-DIAG] track keys = %@", track.keys.sorted().joined(separator: ","))
         let player = QishuiCatalogContract.firstDictionary(root["track_player"], root["trackPlayer"],
                                                            seo["track_player"], track["track_player"], track["trackPlayer"])
@@ -360,12 +371,14 @@ actor QishuiCatalogAPI {
         let isVip = membership["isVip"] as? Bool == true
         let isSvip = membership["isSvip"] as? Bool == true
 
-        // 解析每条流，按码率升序，优先返回账号权限允许的最优可播流。
+        // 在权限内优先完整时长，然后比较码率，避免短高码率片段覆盖长低码率音源。
         let candidates = list.compactMap { QishuiStream(from: $0) }
         guard !candidates.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
-        // iOS 当前媒体代理只转发字节，没有 Android 的解密层。
-        // 把 PlayAuth 拼进 fragment 不会让 HTMLAudio 解密；优先选择真正可直接播放的流。
-        let streams = candidates.filter { !$0.encrypted || (supportsEncryptedPlayback && !$0.auth.isEmpty) }.sorted { $0.bitrate < $1.bitrate }
+        // 只有已连接原生解码中继的调用者才接收带 auth 的加密候选。
+        let streams = candidates.filter { !$0.encrypted || (supportsEncryptedPlayback && !$0.auth.isEmpty) }.sorted {
+            if $0.duration != $1.duration { return $0.duration < $1.duration }
+            return $0.bitrate < $1.bitrate
+        }
         guard !streams.isEmpty else { return QishuiCatalogContract.playbackUnavailable("unsupported_encryption") }
 
         func allowed(_ tier: String) -> Bool {

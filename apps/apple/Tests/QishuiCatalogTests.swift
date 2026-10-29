@@ -26,12 +26,14 @@ private actor CatalogFixture: QishuiCatalogRequesting {
 }
 private actor SEOFixture: QishuiCatalogRequesting {
     let streams: [[String: Any]]
-    init(_ streams: [[String: Any]]) { self.streams = streams }
+    let nested: Bool
+    init(_ streams: [[String: Any]], nested: Bool = false) { self.streams = streams; self.nested = nested }
     func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
         if url.path == "/luna/pc/me" {
             return ["data": ["my_info": ["user_id": "42"], "vip_info": ["is_vip": true, "vip_expire_time": 4102444800]]]
         }
         if url.path == "/luna/h5/seo_track" {
+            if nested { return ["seo_track": ["track": ["id": "101", "duration_ms": 204723]], "track_player": ["url_player_info": "https://vod.volcengineapi.com/?Action=GetPlayInfo"]] }
             return ["data": ["track": ["id": "101", "duration_ms": 180000],
                              "track_player": ["url_player_info": "https://vod.volcengineapi.com/?Action=GetPlayInfo"]]]
         }
@@ -40,6 +42,23 @@ private actor SEOFixture: QishuiCatalogRequesting {
     func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
         return ["Result": ["Data": ["PlayInfoList": streams]]]
     }
+}
+private actor WebTrackFixture: QishuiCatalogRequesting {
+    var postReferer = "", webGet = false
+    func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        if url.path == "/luna/pc/me" { return ["data": ["my_info": ["user_id": "42"], "vip_info": ["is_vip": true, "vip_expire_time": 4102444800]]] }
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if url.path == "/luna/pc/track_v2", q.contains(where: { $0.name == "device_platform" && $0.value == "web" }), q.contains(where: { $0.name == "track_id" && $0.value == "101" }) {
+            webGet = true
+            return ["data": ["track": ["id": "101", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/web.m4a", "duration": 180]]]]]]
+        }
+        return ["data": [:]]
+    }
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
+        postReferer = headers["Referer"] ?? ""
+        throw QishuiCatalogFailure.invalidResponse
+    }
+    func checks() -> Bool { postReferer == "https://www.qishui.com/" && webGet }
 }
 @main struct QishuiCatalogTests {
     static func main() async throws {
@@ -65,6 +84,23 @@ private actor SEOFixture: QishuiCatalogRequesting {
         precondition(nativeResult["playable"] as? Bool == true)
         precondition(nativeResult["nativePlaybackAuth"] as? String == "fixture-only")
         precondition(nativeResult["encrypted"] as? Bool == true)
+        let webFixture = WebTrackFixture()
+        let retryAPI = QishuiCatalogAPI(transport: webFixture)
+        await retryAPI.setSession(["sessionid": "fixture"])
+        let retryResult = try await retryAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(retryResult["playable"] as? Bool == true, "Failed Web POST must retry matching Web GET")
+        let retried = await webFixture.checks()
+        precondition(retried, "POST needs official Referer and GET must retain Web parameters")
+        let long: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/long.m4a", "Duration": 204.723, "Bitrate": 128000]
+        let short: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/short.m4a", "Duration": 60.001, "Bitrate": 192000]
+        for streams in [[short], [short, long]] {
+            let nestedAPI = QishuiCatalogAPI(transport: SEOFixture(streams, nested: true))
+            await nestedAPI.setSession(["sessionid": "fixture"])
+            let result = try await nestedAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+            precondition(result["fullDuration"] as? Double == 204.723, "SEO wrapper must preserve full track duration")
+            precondition(result["duration"] as? Double == (streams.count == 1 ? 60.001 : 204.723))
+            precondition(result["trial"] as? Bool == (streams.count == 1), "VIP cannot turn a real 60-second stream into a full track")
+        }
         let fixture = CatalogFixture()
         let api = QishuiCatalogAPI(transport: fixture)
         let anonymous = await api.validateAccount()
