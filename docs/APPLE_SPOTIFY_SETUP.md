@@ -1,85 +1,26 @@
-# Spotify on iOS / iPadOS
+# Spotify 用户自行配置（2026-10-29）
 
-The Apple client keeps the original visual frontend in WKWebView. Swift provides
-the device-local provider APIs and system account integration; Electron and Node
-are not embedded in the iOS application.
+iOS 采用 Android 客户端同类流程：每位用户在 Spotify Developer Dashboard 登记自己的应用，在 Mineradio 中填写公开 Client ID，然后在 Spotify 官方页面登录自己的账号并授权。
 
-## What is implemented
+## 用户步骤
 
-- Application-owned OAuth Authorization Code + PKCE, with a fresh verifier/state,
-  a five-minute callback window, exact redirect validation and single-use attempts.
-- AuthenticationServices opens the official Spotify authorization page. Passwords
-  and browser cookies stay with the system. WebKit receives account metadata only.
-- Tokens live in the device Keychain, scoped to Client ID. Refresh requests are
-  coalesced; logout invalidates in-flight work. A 401 is retried once, and a 429
-  suspends further calls for the indicated interval rather than retrying in a loop.
-- Account status, paged playlists / liked songs, search, top tracks, album details,
-  library checks/add/remove, playlist create/add/collect. Removed playlist entries
-  still advance the paging cursor. Membership remains unknown when Spotify does
-  not return `product`.
-- Spotify is available in the Apple login, account and search surfaces. Existing
-  four-provider flows and shared Windows/macOS modules are preserved.
+1. 打开 Spotify 登录卡中的开发者后台链接，创建或选择自己的应用。
+2. 在 Spotify 应用设置登记回调：`com.swordingk.mineradio.apple://spotify/callback`。App 内可复制。
+3. 将 32 位 Client ID 填入 Mineradio，点击“保存并授权”。不输入 Client Secret、账号密码或 Token。
+4. 系统授权窗口由 Spotify 承接账号登录，完成后返回 Mineradio。
 
-These are implemented contracts, not a claim of successful live authorization.
-The configuration and real-account gates below remain necessary.
+## 实现
 
-## Team configuration
+- Apple-only 登录面板恢复 Spotify 入口；原有四个平台和波点继续使用各自适配器。
+- `GET/POST /api/spotify/config` 读取/保存公开应用编号，固定 iOS 回调，拒绝任意回调和 Client Secret。
+- 公开编号保存到本机偏好；OAuth Token 留在 Keychain，按应用编号隔离。
+- 保存同一编号不登出；更换编号取消旧授权/刷新任务并清除旧应用 Token，避免跨应用复用。
+- PKCE/state、系统授权、搜索与歌单元数据继续使用已有原生实现。
 
-`Client ID` identifies the registered Spotify application. It is public; it is
-neither a Spotify account password nor an Apple signing certificate. The Client
-Secret must never be embedded in a mobile application. PKCE avoids that need.
+## 能力边界
 
-The team may reuse an existing registration if its owner permits this Apple
-client and registers the exact additional redirect:
+这与安卓“填写 Client ID → 官方授权 → 同步歌单/喜欢 → 匹配其它音源播放”的路线对齐，不代表 Spotify 向本客户端提供原始音频流。平台对开发者应用的账号、授权用户及额度要求仍由 Spotify 决定。
 
-```text
-com.swordingk.mineradio.apple://spotify/callback
-```
+用户尚未提供自己的有效 Client ID，因此本轮不声称真实 OAuth、真实账号歌单或歌曲播放验收通过。不再把等待团队 Client ID 当作代码实现的前置阻碍。
 
-Set the Xcode application's `SPOTIFY_CLIENT_ID` build setting to that registration's
-32-character Client ID. `project.yml` defaults it to empty. The generated Info.plist
-expands this setting into `MineradioSpotifyClientID`; the URL scheme is registered
-by the same project specification. Do not edit the generated Info.plist directly.
-
-For a local build without changing project defaults:
-
-```sh
-xcodebuild -project apps/apple/MineradioApple.xcodeproj \
-  -scheme MineradioApple -configuration Debug \
-  -destination 'generic/platform=iOS' \
-  SPOTIFY_CLIENT_ID='<public application Client ID>' build
-```
-
-Use the same setting for the intended archive. Verify the built Info.plist and
-redirect registration before testing. Development-mode user allowlisting and
-production access approval are owned by the Spotify application administrator;
-a valid Client ID alone does not grant unrestricted public access.
-
-Without this configuration the Apple UI says that team configuration is pending
-and disables authorization. Ordinary users are not asked to create developer apps.
-
-## Playback boundary
-
-This integration supplies Spotify metadata and library actions. It does **not**
-extract Spotify audio, supply a Spotify DRM stream, or claim that previews are
-full tracks. `/api/spotify/song/url` intentionally returns an empty URL and
-`playable: false`. The original player then attempts matching through available
-music sources with their own account, catalog and playback rights. A match may
-be a different release/version, and may be unavailable. Live matching remains an
-acceptance requirement; a mocked response or a local WAV cannot establish it.
-
-## Remaining acceptance
-
-- Registered team Client ID + exact callback, successful allowlisted-account login.
-- Cancel, revoked/expired session, refresh, restart restoration and logout.
-- Private/owned/collaborative playlist access under the application's actual quota
-  mode; search paging, liked songs and authorized writes with read-back.
-- Authorized matching playback, lyrics, seeking, interruptions and backgrounding
-  on physical iPhone and iPad. Long-running resource acceptance is separate.
-- New numbered archive and upload only after the next candidate is accepted.
-  This source is not the already approved TestFlight build 15 binary.
-
-References: [Spotify PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow),
-[application registration](https://developer.spotify.com/documentation/web-api/concepts/apps),
-[quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes),
-[2026 migration](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
+验证：71 项 JS 检查、Spotify Swift 套件、Debug iOS Simulator 构建通过。测试覆盖非法配置不提交、配置持久化、固定回调、同 ID 保留会话、更换 ID 作废旧授权与刷新、原 OAuth/歌单边界。用户的真实开发者应用授权与歌曲匹配仍待实际账号验证。这些改动在本地源码，不会自动进入此前上传的 TestFlight 构建。

@@ -6,7 +6,8 @@ import Security
 actor SpotifyNativeAPI {
     private struct Token: Codable { var access: String; var refresh: String; var expiry: Date }
     private struct Attempt { let verifier: String; let state: String; let started: Date; let generation: Int }
-    private let clientID: String
+    private var clientID: String
+    private let settingsKey: String?
     private let transport: any SpotifyRequesting
     private let keychainService: String?
     private var token: Token?
@@ -18,7 +19,12 @@ actor SpotifyNativeAPI {
     private var rateLimitUntil = Date.distantPast
 
     init(clientID: String = Bundle.main.object(forInfoDictionaryKey: "MineradioSpotifyClientID") as? String ?? "", transport: any SpotifyRequesting = SpotifyTransport(), keychainService: String? = "com.swordingk.mineradio.spotify.apple") {
-        self.clientID = SpotifyContract.clientID(clientID); self.transport = transport; self.keychainService = keychainService
+        let settingsKey = keychainService.map { $0 + ".client-id" }
+        self.settingsKey = settingsKey
+        let saved = settingsKey.flatMap { UserDefaults.standard.string(forKey: $0) } ?? ""
+        let normalizedSaved = SpotifyContract.clientID(saved)
+        self.clientID = normalizedSaved.isEmpty ? SpotifyContract.clientID(clientID) : normalizedSaved
+        self.transport = transport; self.keychainService = keychainService
         // Scope storage to the registered app: changing Client ID never reuses
         // a token granted to a different Spotify application.
         if let service = keychainService, !self.clientID.isEmpty {
@@ -66,10 +72,12 @@ actor SpotifyNativeAPI {
         return try await status()
     }
     private func exchange(_ fields: [String: String], previousRefresh: String = "") async throws -> Token {
+        let owner = generation
         var request = URLRequest(url: URL(string: "https://accounts.spotify.com/api/token")!, timeoutInterval: 20)
         request.httpMethod = "POST"; request.httpBody = SpotifyContract.form(fields.merging(["client_id": clientID]) { _, new in new })
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let response = try await transport.request(request)
+        guard owner == generation else { throw CancellationError() }
         if response.status == 429 { rateLimitUntil = Date().addingTimeInterval(Double(max(1, response.retryAfter))); throw Failure.rate(response.retryAfter) }
         guard response.status == 200, let object = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
               let access = object["access_token"] as? String, !access.isEmpty else { throw Failure.authorization }
@@ -118,9 +126,9 @@ actor SpotifyNativeAPI {
         return response.data.isEmpty ? [:] : try JSONSerialization.jsonObject(with: response.data)
     }
     private func status() async throws -> [String: Any] {
-        var result: [String: Any] = ["provider": "spotify", "configured": !clientID.isEmpty, "oauthConfigured": !clientID.isEmpty, "redirectUri": SpotifyContract.redirectURI,
+        var result: [String: Any] = ["provider": "spotify", "configured": !clientID.isEmpty, "oauthConfigured": !clientID.isEmpty, "clientId": clientID, "redirectUri": SpotifyContract.redirectURI,
              "loggedIn": false, "membershipKnown": false, "playbackMode": "recommend-match", "directPlayback": false,
-             "message": clientID.isEmpty ? "团队尚未配置 Spotify 授权应用；无需用户自行注册。" : "连接 Spotify 读取歌单；播放按可用音乐源匹配。"]
+             "message": clientID.isEmpty ? "先填写你在 Spotify 开发者后台获得的 Client ID，并登记下方 iOS 回调地址。" : "连接 Spotify 读取歌单；播放按可用音乐源匹配。"]
         guard token != nil else { return result }
         if profile == nil || Date().timeIntervalSince(profileChecked) > 30 { profile = try await request("/me") as? [String: Any]; profileChecked = Date() }
         guard let profile, let id = profile["id"] as? String, !id.isEmpty else { throw Failure.authorization }
@@ -129,10 +137,42 @@ actor SpotifyNativeAPI {
              "capabilities": ["search": true, "library": true], "playbackKeyReady": true]) { _, new in new }
         return result
     }
+    private func configuration() -> [String: Any] {
+        ["provider": "spotify", "ok": true, "clientId": clientID, "redirectUri": SpotifyContract.redirectURI,
+         "oauthConfigured": !clientID.isEmpty, "configured": !clientID.isEmpty, "loggedIn": token != nil,
+         "playbackMode": "recommend-match", "directPlayback": false]
+    }
+    private func configure(_ body: Data) throws -> [String: Any] {
+        guard body.count <= 4096,
+              let payload = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let supplied = (payload["clientId"] ?? payload["client_id"]) as? String,
+              payload["clientSecret"] == nil, payload["client_secret"] == nil else { throw Failure.configuration }
+        let id = SpotifyContract.clientID(supplied.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !id.isEmpty else { throw Failure.configuration }
+        for key in ["redirectUri", "redirect_uri"] {
+            if let redirect = payload[key], redirect as? String != SpotifyContract.redirectURI { throw Failure.configuration }
+        }
+        if id != clientID {
+            // Delete only the old app-bound token before adopting another public app ID.
+            let oldToken = token
+            token = nil
+            do { try persist() } catch { token = oldToken; throw error }
+            generation += 1; attempt = nil; refreshJob?.cancel(); refreshJob = nil
+            clientID = id; profile = nil; profileChecked = .distantPast; rateLimitUntil = .distantPast
+            if let settingsKey { UserDefaults.standard.set(id, forKey: settingsKey) }
+        }
+        return configuration()
+    }
     func handle(_ url: URL, method: String, body: Data) async throws -> [String: Any] {
         let path = String(url.path.dropFirst("/api/spotify".count))
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func q(_ name: String) -> String { query.first {$0.name == name}?.value ?? "" }
+        if path == "/config" {
+            if method == "GET" { return configuration() }
+            guard method == "POST" else { return ["provider": "spotify", "ok": false, "code": 405, "error": "METHOD_NOT_ALLOWED"] }
+            do { return try configure(body) }
+            catch let error as Failure { return ["provider": "spotify", "ok": false, "error": error.code, "message": error.localizedDescription] }
+        }
         let writes = ["/logout", "/song/like", "/album/like", "/playlist/add-song", "/playlist/create", "/playlist/collect"]
         guard method == (writes.contains(path) ? "POST" : "GET") else { return ["provider": "spotify", "error": "METHOD_NOT_ALLOWED", "code": 405] }
         let offset = min(100000, max(0, Int(q("offset")) ?? 0)), limit = min(50, max(1, Int(q("limit")) ?? 30))
@@ -212,7 +252,7 @@ actor SpotifyNativeAPI {
         var code: String { switch self { case .configuration: return "SPOTIFY_OAUTH_NOT_CONFIGURED"; case .authorization: return "SPOTIFY_AUTH_REQUIRED"; case .rate: return "SPOTIFY_RATE_LIMITED"; case .callback: return "SPOTIFY_CALLBACK_INVALID"; case .busy: return "SPOTIFY_LOGIN_BUSY"; case .storage: return "SPOTIFY_STORAGE_FAILED"; case .id: return "SPOTIFY_INVALID_ID"; case .http: return "SPOTIFY_API_FAILED" } }
         var retryAfter: Int { if case let .rate(seconds) = self { return seconds }; return 0 }
         var errorDescription: String? { switch self {
-        case .configuration: return "团队尚未配置 Spotify Client ID。"
+        case .configuration: return "请填写有效的 Spotify Client ID，并使用客户端提供的固定 iOS 回调地址。"
         case .busy: return "Spotify 授权已打开，请先完成或取消。"
         case .callback: return "Spotify 授权回调不匹配或已过期，请重新连接。"
         case .authorization: return "Spotify 登录失效，请重新连接。"

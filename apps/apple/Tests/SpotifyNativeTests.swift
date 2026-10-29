@@ -49,6 +49,18 @@ private actor SpotifyFixture: SpotifyRequesting {
         let absent = try await empty.handle(URL(string: "http://127.0.0.1/api/spotify/status")!, method: "GET", body: Data())
         precondition(absent["oauthConfigured"] as? Bool == false && absent["loggedIn"] as? Bool == false)
         do { _ = try await empty.beginAuthorization(); preconditionFailure("Unconfigured app started login") } catch {}
+        let configURL = URL(string: "http://127.0.0.1/api/spotify/config")!
+        let publicID = String(repeating: "b", count: 32)
+        let invalidConfig = try await empty.handle(configURL, method: "POST", body: Data("{\"clientId\":\"not-an-app\"}".utf8))
+        precondition(invalidConfig["ok"] as? Bool == false)
+        let setConfig = try await empty.handle(configURL, method: "POST", body: try JSONSerialization.data(withJSONObject: ["clientId": publicID]))
+        precondition(setConfig["ok"] as? Bool == true && setConfig["clientId"] as? String == publicID)
+        precondition(setConfig["redirectUri"] as? String == SpotifyContract.redirectURI)
+        let configuredAuth = try await empty.beginAuthorization()
+        precondition(URLComponents(url: configuredAuth, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "client_id" }?.value == publicID)
+        let fixedCallback = try await empty.handle(configURL, method: "POST", body: try JSONSerialization.data(withJSONObject: ["clientId": publicID, "redirectUri": "https://wrong.example/callback"]))
+        precondition(fixedCallback["ok"] as? Bool == false)
+        await empty.cancelAuthorization()
         let fixture = SpotifyFixture()
         let api = SpotifyNativeAPI(clientID: String(repeating: "a", count: 32), transport: fixture, keychainService: nil)
         let auth = try await api.beginAuthorization()
@@ -68,6 +80,8 @@ private actor SpotifyFixture: SpotifyRequesting {
         func get(_ path: String, method: String = "GET", body: String = "") async throws -> [String: Any] {
             try await api.handle(URL(string: "http://127.0.0.1/api/spotify/" + path)!, method: method, body: Data(body.utf8))
         }
+        let sameConfig = try await api.handle(configURL, method: "POST", body: try JSONSerialization.data(withJSONObject: ["clientId": String(repeating: "a", count: 32)]))
+        precondition(sameConfig["loggedIn"] as? Bool == true, "Saving the same public app ID must not log out")
         let lists = try await get("user/playlists?limit=20&offset=0")
         precondition((lists["playlists"] as? [[String: Any]])?.first(where: {$0["id"] as? String == "List1"})?["canAddSongs"] as? Bool == true)
         precondition(lists["hasMore"] as? Bool == true && lists["nextOffset"] as? Int == 1)
@@ -123,6 +137,35 @@ private actor SpotifyFixture: SpotifyRequesting {
         _ = try? await inflight.value
         let afterLogout = try await raceAPI.handle(URL(string: "http://127.0.0.1/api/spotify/status")!, method: "GET", body: Data())
         precondition(afterLogout["loggedIn"] as? Bool == false, "Late token refresh must not restore a logged-out account")
+        let switchAuth = try await raceAPI.beginAuthorization()
+        let oldState = URLComponents(url: switchAuth, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "state" }!.value!
+        let switched = try await raceAPI.handle(configURL, method: "POST", body: try JSONSerialization.data(withJSONObject: ["clientId": publicID]))
+        precondition(switched["loggedIn"] as? Bool == false)
+        do { _ = try await raceAPI.finishAuthorization(URL(string: SpotifyContract.redirectURI + "?code=fixture&state=" + oldState)!); preconditionFailure("Old app attempt survived configuration change") } catch {}
+        let readConfig = try await raceAPI.handle(configURL, method: "GET", body: Data())
+        precondition(readConfig["clientId"] as? String == publicID && readConfig["access_token"] == nil)
+        // Changing the registered application while a refresh is pending must not resurrect its token.
+        let reauth = try await raceAPI.beginAuthorization()
+        let reauthState = URLComponents(url: reauth, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "state" }!.value!
+        _ = try await raceAPI.finishAuthorization(URL(string: SpotifyContract.redirectURI + "?code=fixture&state=" + reauthState)!)
+        await raceTransport.pauseRefresh(); await raceTransport.setExpired()
+        let switchingRequest = Task { try await raceAPI.handle(URL(string: "http://127.0.0.1/api/spotify/search?keywords=old-app")!, method: "GET", body: Data()) }
+        for _ in 0..<100 { if await raceTransport.refreshWaiting() { break }; try await Task.sleep(nanoseconds: 5_000_000) }
+        let refreshPending = await raceTransport.refreshWaiting(); precondition(refreshPending)
+        let newID = String(repeating: "d", count: 32)
+        _ = try await raceAPI.handle(configURL, method: "POST", body: try JSONSerialization.data(withJSONObject: ["clientId": newID]))
+        await raceTransport.releaseRefresh()
+        _ = try? await switchingRequest.value
+        let afterChange = try await raceAPI.handle(configURL, method: "GET", body: Data())
+        precondition(afterChange["loggedIn"] as? Bool == false && afterChange["clientId"] as? String == newID)
+        let service = "com.swordingk.mineradio.spotify.config-test." + UUID().uuidString
+        defer { UserDefaults.standard.removeObject(forKey: service + ".client-id") }
+        let persisted = SpotifyNativeAPI(clientID: "", transport: SpotifyFixture(), keychainService: service)
+        let persistedConfig = try await persisted.handle(configURL, method: "POST", body: try JSONSerialization.data(withJSONObject: ["clientId": publicID]))
+        precondition(persistedConfig["ok"] as? Bool == true)
+        let restored = SpotifyNativeAPI(clientID: "", transport: SpotifyFixture(), keychainService: service)
+        let restoredConfig = try await restored.handle(configURL, method: "GET", body: Data())
+        precondition(restoredConfig["clientId"] as? String == publicID, "Public app ID survives a new adapter instance")
         print("Spotify: PKCE, state/replay, configuration gate, metadata/paging, refresh, library writes, no direct audio, rate-limit and logout boundaries passed")
     }
 }

@@ -164,10 +164,9 @@
     };
   }
 
-  // Spotify：官方不向第三方 App 提供音频，这一版在 iOS 上不展示入口。
+  // Spotify 由独立 Apple 适配器处理用户配置与系统授权。
   var style = document.createElement('style');
   style.textContent = [
-    'body.apple-client [data-login-provider="spotify"], body.apple-client .top-account-pill[data-account-provider="spotify"] { display: none !important; }',
     // 按钮放在二维码下方独占一行：横向排列、文字不换行，窄时自动换到下一行而不是被挤成竖排。
     'body.apple-client #apple-qr-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center;',
     '  width: max-content; max-width: min(340px, 86vw); justify-self: center; box-sizing: border-box; margin: 10px 0 4px; }',
