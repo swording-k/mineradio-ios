@@ -60,10 +60,10 @@
     }
     body.apple-client #playlist-panel .queue-head > div:first-child { display: none; }
     body.apple-client #playlist-panel .queue-head { min-height: 0; margin: 0 !important; justify-content: flex-start; }
-    body.apple-client #playlist-panel .playlist-panel-sticky { display: flex; flex-direction: row-reverse; align-items: center; justify-content: flex-end; gap: 8px; }
-    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close > .apple-panel-close { top: 50%; transform: translateY(-50%); }
-    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close { padding-right: 70px !important; }
-    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close .queue-head { padding-right: 0; }
+    body.apple-client #playlist-panel .playlist-panel-sticky { display: block; padding: 8px 0 !important; }
+    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close > .apple-panel-close { top: 8px; right: 0; transform: none; min-height: 44px; }
+    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close { padding-right: 0 !important; }
+    body.apple-client #playlist-panel .playlist-panel-sticky.apple-has-close .queue-head { padding-right: 70px; min-height: 44px; justify-content: flex-end; margin-bottom: 6px !important; }
     /* 横屏：面板从顶部铺到底部，宽度按屏幕比例，列表至少能看到 4~5 首 */
     body.apple-client #playlist-panel {
       top: max(env(safe-area-inset-top), 8px) !important;
@@ -73,7 +73,9 @@
     body.apple-client #fx-panel { top: max(env(safe-area-inset-top), 8px) !important; }
     body.apple-client #playlist-panel .queue-head .fx-sub { display: none; }
     body.apple-client #playlist-panel .queue-head { margin-bottom: 2px; }
-    body.apple-client #playlist-panel .panel-tab { min-height: 36px !important; }
+    body.apple-client #playlist-panel .panel-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+    body.apple-client #playlist-panel .panel-tab { min-height: 44px !important; flex: 0 0 auto; white-space: nowrap; padding: 0 12px; }
+    body.apple-client #playlist-panel .queue-head-act .fx-mini-btn { min-width: 44px; min-height: 44px; white-space: nowrap; }
   }
   /* iPad 竖屏 / 分屏：原版桌面首页右栏只有约 450px，信息卡两列会把“音乐发现”挤成一字一行、数字截成省略号。
      这里让右栏信息卡改为单列，每张卡占满右栏宽度，内容与原版一致。 */
@@ -155,6 +157,12 @@
   var loginStyle = document.createElement('style');
   loginStyle.textContent = `
     body.apple-client #login-node-graph [data-login-provider-sort] { touch-action: none; }
+    @media ${PHONE} {
+      /* 头部本身原来 absolute；只改退出按钮不会给提示让位。让整个头部参与文档布局。 */
+      body.apple-client #login-modal .login-panel-head { position: relative !important; top: auto !important; right: auto !important; min-height: 44px; margin: 0 0 12px; gap: 10px; }
+      body.apple-client #login-modal .login-reset-all-btn { position: static !important; margin: 0 !important; min-height: 44px; height: auto; padding: 0 14px; transform: none !important; }
+      body.apple-client #login-modal .login-panel-close { position: static !important; width: 44px; height: 44px; min-width: 44px; flex: 0 0 44px; }
+    }
     /* 竖屏：MR 节点在平台列表正下方。把平台的输出端口移到左侧，与 MR 输入端口同一列，
        连线变成左侧一条竖向导轨，不再横穿卡片、不压「展示」开关；拖线与点卡片都能连接。 */
     @media (max-width: 767px) and (orientation: portrait) {
@@ -164,8 +172,6 @@
       body.apple-client #login-auth-drawer .login-auth-copy #qr-status { text-align: center; }
       body.apple-client #login-auth-drawer .login-auth-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
       body.apple-client #login-auth-drawer .login-auth-actions .modal-btn { flex: 0 0 auto; white-space: nowrap; }
-      /* 「退出登录」原版绝对定位在右上角，竖屏会压住第一个平台卡片和关闭按钮：改为放在列表上方右侧。 */
-      body.apple-client #login-modal .login-reset-all-btn { position: static !important; display: block; margin: 0 52px 10px auto; transform: none !important; }
       body.apple-client #login-node-graph .login-node-providers .flow-port.out { right: auto !important; left: -24px !important; }
       body.apple-client #login-node-graph .flow-port { touch-action: none; }
       body.apple-client #login-node-graph .login-node-providers [data-login-provider] { cursor: pointer; }
@@ -177,13 +183,14 @@
   if (dialog) {
     var tip = document.createElement('div');
     tip.id = 'apple-login-rotate-tip';
-    tip.innerHTML = '<span>横屏登录更方便：可直接把平台拖线到 MR。竖屏也可以直接点平台卡片登录。</span>' +
-      '<button type="button" class="fx-mini-btn ghost">切到横屏登录</button>';
+    tip.innerHTML = '<span>点平台卡片即可登录，也可横屏连线。</span>' +
+      '<button type="button" class="fx-mini-btn ghost">切换横屏</button>';
     tip.querySelector('button').addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       if (typeof window.__mineradioAppleTempOrientation === 'function') window.__mineradioAppleTempOrientation('landscape');
     });
-    dialog.insertBefore(tip, dialog.firstChild);
+    var head = dialog.querySelector('.login-panel-head');
+    dialog.insertBefore(tip, head ? head.nextSibling : dialog.firstChild);
     var wasOpen = false;
     new MutationObserver(function () {
       var open = loginModal.classList.contains('show');
@@ -195,12 +202,12 @@
       #apple-login-rotate-tip { display: none; }
       @media (max-width: 767px) and (orientation: portrait) {
         body.apple-client #login-modal:not(.login-easter-egg-locked) #apple-login-rotate-tip {
-          display: flex; align-items: center; gap: 10px; margin: 0 44px 12px 0; padding: 10px 12px;
+          display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px;
           border-radius: 14px; border: 1px solid rgba(244, 210, 138, .28); background: rgba(244, 210, 138, .08);
           color: rgba(255, 244, 214, .9); font-size: 12px; line-height: 1.45;
         }
         body.apple-client #apple-login-rotate-tip span { flex: 1 1 auto; min-width: 0; }
-        body.apple-client #apple-login-rotate-tip button { flex: 0 0 auto; white-space: nowrap; height: 32px; padding: 0 12px; }
+        body.apple-client #apple-login-rotate-tip button { flex: 0 0 auto; white-space: nowrap; min-height: 44px; height: auto; padding: 8px 12px; }
       }`;
     document.head.appendChild(tipStyle);
   }

@@ -39,7 +39,12 @@
   };
   function button(id,text,parent,click){if(!parent)return null;var b=document.createElement('button');b.id=id;b.type='button';b.textContent=text;b.className='bodian workflow-node';b.onclick=click;parent.appendChild(b);return b;}
   var loginButton=button('login-provider-bodian','波点音乐',document.getElementById('login-platform-tabs'),function(){openProviderLogin('bodian');});
-  if(loginButton)loginButton.setAttribute('data-login-provider','bodian');
+  if(loginButton){
+    loginButton.setAttribute('data-login-provider','bodian');
+    var output=document.createElement('span');output.className='flow-port out';
+    output.setAttribute('data-login-provider-output','bodian');output.setAttribute('title','连接波点音乐');
+    loginButton.appendChild(output);
+  }
   var searchButton=button('search-mode-bodian','BD',document.getElementById('search-mode-tabs'),function(){searchMode='bodian';if(typeof updateSearchModeTabs==='function')updateSearchModeTabs();if(typeof clearSearchResults==='function')clearSearchResults();if(typeof $input!=='undefined'&&$input.value.trim())doSearch($input.value.trim());});
   var originalSearchUI=typeof updateSearchModeTabs==='function'?updateSearchModeTabs:null;
   if(originalSearchUI)updateSearchModeTabs=function(){var r=originalSearchUI.apply(this,arguments);if(searchButton){searchButton.classList.toggle('active',searchMode==='bodian');searchButton.setAttribute('aria-selected',searchMode==='bodian'?'true':'false');}if(searchMode==='bodian'&&typeof $input!=='undefined')$input.placeholder='搜索波点音乐…';return r;};
@@ -69,7 +74,7 @@
           text('qr-status',r.message||'请用波点音乐 App 扫码');
           if(r.code===803||r.status==='confirmed'){
             await refresh();if(!account.loggedIn)throw new Error('账号校验未完成，请重新扫码');
-            await library();cancel();closeLoginModal();if(typeof showToast==='function')showToast('波点音乐已连接');return;
+            await library();if(typeof markLoginWorkflowConnected==='function')markLoginWorkflowConnected('bodian');cancel();closeLoginModal();if(typeof showToast==='function')showToast('波点音乐已连接');return;
           }
           if(r.code===800||r.status==='expired')return;
           timer=setTimeout(poll,2000);
@@ -79,6 +84,15 @@
     }catch(e){if(gen===generation)text('qr-status',e.message||'二维码生成失败，请重试');}
   }
   var open=openProviderLogin,update=updateLoginProviderUi,close=closeLoginModal,select=selectLoginProviderNode;
+  var connectMode=connectLoginMode;
+  connectLoginMode=function(mode){if(loginProvider!=='bodian')return connectMode.apply(this,arguments);if(typeof setLoginAuthDrawerOpen==='function')setLoginAuthDrawerOpen(true);updateLoginProviderUi();return start();};
+  var connect=connectLoginProviderToMr;
+  connectLoginProviderToMr=function(p){
+    if(p!=='bodian')return connect.apply(this,arguments);
+    if(typeof loginProviderClickSuppressed!=='undefined')loginProviderClickSuppressed=false;
+    if(typeof loginWorkflowPendingProvider!=='undefined')loginWorkflowPendingProvider='bodian';
+    return selectLoginProviderNode('bodian');
+  };
   selectLoginProviderNode=function(p){cancel();if(p!=='bodian')return select.apply(this,arguments);loginProvider='bodian';if(typeof setLoginAuthDrawerOpen==='function')setLoginAuthDrawerOpen(true);updateLoginProviderUi();start();};
   openProviderLogin=async function(p){if(p!=='bodian'){cancel();return open.apply(this,arguments);}if(typeof closeUserModal==='function')closeUserModal();await showLoginModal({provider:'bodian'});if(typeof loginEasterEggState!=='undefined'&&(!loginEasterEggState.ready||!loginEasterEggState.unlocked))return;loginProvider='bodian';if(typeof setLoginAuthDrawerOpen==='function')setLoginAuthDrawerOpen(true);updateLoginProviderUi();start();};
   updateLoginProviderUi=function(){var r=update.apply(this,arguments);if(loginButton)loginButton.classList.toggle('active',loginProvider==='bodian');if(loginProvider==='bodian'){text('login-modal-title','连接波点音乐');text('login-modal-desc','请使用波点音乐 App 扫码登录');var b=document.getElementById('refresh-qr-btn');if(b){b.disabled=false;b.textContent='刷新二维码';b.onclick=start;}}return r;};
