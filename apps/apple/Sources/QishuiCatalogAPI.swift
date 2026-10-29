@@ -129,29 +129,46 @@ actor QishuiCatalogAPI {
                 for key in ["vipLevel", "isVip", "isSvip", "vipType", "vipLabel", "membershipKnown"] { if out[key] == nil, let v = status[key] { out[key] = v } }
                 return out
             }
+            var preview: [String: Any]?
+            var sourceFailure: [String: Any]?
+            func fullPlayback(_ result: [String: Any]) -> [String: Any]? {
+                guard result["playable"] as? Bool == true else { return nil }
+                if result["trial"] as? Bool != true { return account(result) }
+                if preview == nil || (result["duration"] as? Double ?? 0) > (preview?["duration"] as? Double ?? 0) { preview = account(result) }
+                return nil
+            }
+            // Match the team Mac client's authenticated PC POST contract before GET/Web fallbacks.
+            if let payload = try? await pc("/luna/pc/track_v2", payload: ["track_id": id, "media_type": "track", "queue_type": "favorite_track_playlist", "scene_name": "library"]) {
+                let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
+                if let full = fullPlayback(result) { return full }
+            }
             // 1) 桌面 PC 接口（GET，与原 Windows 契约一致）
             do {
                 let payload = try await pc("/luna/pc/track_v2", ["track_id": id, "media_type": "track"])
                 let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
-                if result["playable"] as? Bool == true { return account(result) }
+                if let full = fullPlayback(result) { return full }
             } catch QishuiCatalogFailure.sessionExpired { return QishuiCatalogContract.disconnected(expired: true).merging(["playable": false]) { _, b in b } }
             catch {}
             // 2) Web 会话的 POST 形式（安卓 fetchQishuiPcTrackV2Post 的做法：device_platform=web）
             if let payload = try? await webTrackV2(id) {
                 let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
-                if result["playable"] as? Bool == true { return account(result) }
+                if let full = fullPlayback(result) { return full }
             }
-            // 3) 汽水已对第三方关闭整曲接口时，回退 seo_track → url_player_info → PlayerInfo（官方仅给试听片段）。
+            // 3) PC/Web 无完整音源时，尝试 SEO/PlayerInfo，保留平台返回的真实时长。
             if let seo = try? await seoPlayback(id, membership: status) {
                 var out = account(seo)
                 if out["trial"] as? Bool == true {
                     out["source"] = "qishui-public-seo-track"
-                    out["message"] = "汽水仅向第三方客户端提供试听片段，完整播放需在汽水官方 App 内收听。"
+                    out["message"] = "当前接口返回试听片段，尚未取得这首歌的完整播放源。"
                 }
-                return out
+                if let full = fullPlayback(out) { return full }
+                if out["playable"] as? Bool != true { sourceFailure = out }
             }
-            do { return account(QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id)) }
-            catch { return account(QishuiCatalogContract.playbackUnavailable()) }
+            do {
+                let result = QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id)
+                if let full = fullPlayback(result) { return full }
+                return preview ?? sourceFailure ?? account(result)
+            } catch { return preview ?? sourceFailure ?? account(QishuiCatalogContract.playbackUnavailable()) }
         default: return QishuiCatalogContract.unsupported()
         }
     }
@@ -185,7 +202,7 @@ actor QishuiCatalogAPI {
         headers["Cookie"] = cookies.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
         let json: [String: Any]
         if let payload {
-            guard hasSession, QishuiCatalogContract.writePaths.contains(path) else { throw QishuiCatalogFailure.invalidRequest }
+            guard hasSession, (QishuiCatalogContract.writePaths.contains(path) || path == "/luna/pc/track_v2") else { throw QishuiCatalogFailure.invalidRequest }
             headers["Content-Type"] = "application/json"; headers["Referer"] = "https://www.qishui.com/"
             let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
             json = try await transport.post(url, headers: headers, body: body)

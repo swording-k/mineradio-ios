@@ -60,8 +60,36 @@ private actor WebTrackFixture: QishuiCatalogRequesting {
     }
     func checks() -> Bool { postReferer == "https://www.qishui.com/" && webGet }
 }
+private actor PCPostFixture: QishuiCatalogRequesting {
+    let previewFirst: Bool
+    init(previewFirst: Bool = false) { self.previewFirst = previewFirst }
+    func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        if url.path == "/luna/pc/me" { return ["data": ["my_info": ["user_id": "42"]]] }
+        if previewFirst && url.path == "/luna/pc/track_v2" {
+            return ["status_code": 0, "data": ["track": ["id": "101", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/get-full.m4a", "duration": 180]]]]]]
+        }
+        return ["data": [:]]
+    }
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard url.path == "/luna/pc/track_v2", query.contains(where: { $0.name == "device_platform" && $0.value == "windows" }) else { throw QishuiCatalogFailure.invalidRequest }
+        let input = try JSONSerialization.jsonObject(with: body) as! [String: String]
+        precondition(input["track_id"] == "101" && input["scene_name"] == "library" && input["queue_type"] == "favorite_track_playlist")
+        precondition(headers["Cookie"]?.contains("sessionid=fixture") == true)
+        return ["status_code": 0, "data": ["track": ["id": "101", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/pc-post.m4a", "duration": previewFirst ? 60 : 180]]]]]]
+    }
+}
 @main struct QishuiCatalogTests {
     static func main() async throws {
+        let previewAPI = QishuiCatalogAPI(transport: PCPostFixture(previewFirst: true))
+        await previewAPI.setSession(["sessionid": "fixture"])
+        let upgraded = try await previewAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(upgraded["url"] as? String == "https://music.douyincdn.com/get-full.m4a", "A preview must not suppress a later full source")
+        let pcPostAPI = QishuiCatalogAPI(transport: PCPostFixture())
+        await pcPostAPI.setSession(["sessionid": "fixture"])
+        let pcPostResult = try await pcPostAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(pcPostResult["url"] as? String == "https://music.douyincdn.com/pc-post.m4a", "PC POST source must be tried before public previews")
+
         let clear: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/clear.m4a", "Duration": 30, "Bitrate": 128000]
         let cipher: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/encrypted.m4a", "Duration": 180, "Bitrate": 192000, "PlayAuth": "fixture-only"]
         let nestedCipher: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/encrypted.m4a", "EncryptInfo": ["method": "fixture"]]
