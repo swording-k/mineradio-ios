@@ -1,0 +1,18 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+function fixture(originalPlayback=false){
+ const requests=[], nodes={}; const node=()=>({classList:{add(){},toggle(){}},appendChild(){},setAttribute(){},style:{},querySelector:()=>null});
+ const c={URLSearchParams,window:{},document:{createElement:node,getElementById:id=>nodes[id]||(nodes[id]=node()),querySelector:()=>node(),head:node()},
+ ACCOUNT_PROVIDER_KEYS:[],LOGIN_WORKFLOW_PROVIDERS:[],MUSIC_SEARCH_PROVIDER_ORDER:[],SEARCH_HISTORY_MODES:[],userPlaylists:[],loginProvider:'netease',activeAccountProvider:'netease',searchMode:'all',
+ apiJson:async(url)=>{requests.push(url);return {loggedIn:false,playlists:[]};},setTimeout:()=>1,clearTimeout(){},
+ console};
+ for(const k of ['normalizeAccountProviderKey','normalizeLoginProviderKey','searchModeProvider','normalizePlaybackProvider','normalizePlaylistProvider'])c[k]=()=> 'netease';
+ for(const k of ['songProviderKey','queueItemKey','songSourceLabel','playlistProviderLabel','playlistProviderName','platformMeta','platformStatus','hasAnyPlatformLogin','loggedProviderCount','searchProviderCanSearch','searchProviderUrl','controlSourceSearchUrl','playlistTracksEndpoint','lyricEndpointForSong','neteasePlaybackMatchQuery','openProviderLogin','selectLoginProviderNode','closeLoginModal','updateLoginProviderUi','setSearchMode','refreshUserPlaylists','logoutActiveAccount','logoutAllAccountsAndResetEasterEgg','renderUserBtn'])c[k]=()=>'';
+ if(originalPlayback){vm.runInNewContext(fs.readFileSync('public/js/modules/05-playback/13-playback-start-audio.js','utf8'),c);c.getProviderPlaybackQuality=()=> 'high';c.normalizePlaybackQualityForProvider=x=>x;c.playbackQualityCapValue=()=>'';c.playbackQualityAboveCap=()=>false;}
+ vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-bodian.js','utf8'),c); return {c,requests};
+}
+test('Bodian identity survives search, queue and playlist normalizers',()=>{const {c}=fixture();assert.equal(c.songProviderKey({provider:'bodian',id:'1'}),'bodian'); assert.equal(c.queueItemKey({provider:'bodian',id:'1'}),'bodian:1');assert.equal(c.normalizePlaylistProvider('bodian'),'bodian'); assert(c.MUSIC_SEARCH_PROVIDER_ORDER.includes('bodian'));});
+test('Bodian playback marker reroutes exact per-song lookup without using current queue state',async()=>{const {c,requests}=fixture();const query=c.neteasePlaybackMatchQuery({provider:'bodian',id:'42'});await c.apiJson('/api/song/url?id=42'+query+'&level=high');assert.equal(requests.at(-1),'/api/bodian/song/url?id=42&level=high');await c.apiJson('/api/song/url?id=42');assert.equal(requests.at(-1),'/api/song/url?id=42');});
+test('Bodian search and lyrics route to own provider',()=>{const {c}=fixture();assert.match(c.searchProviderUrl('bodian','晴天',30,0),/^\/api\/bodian\/search\?/);assert.equal(c.lyricEndpointForSong({provider:'bodian',id:'42'}),'/api/bodian/lyric?id=42');});
+
+test('unchanged original gapless lookup uses Bodian route rather than NetEase',async()=>{const {c,requests}=fixture(true);await c.resolveAlbumGaplessPlaybackData({provider:'bodian',source:'bodian',type:'bodian',id:'42'});assert.equal(requests.at(-1),'/api/bodian/song/url?id=42&quality=high');});
+test('Bodian login opens the real modal with its own provider and issues a Bodian QR request',async()=>{const {c,requests}=fixture();const opened=[];c.showLoginModal=async opts=>opened.push(opts.provider);c.setLoginAuthDrawerOpen=on=>opened.push(on);await c.openProviderLogin('bodian');assert.deepEqual(opened,['bodian',true]);assert.equal(c.loginProvider,'bodian');assert(requests.includes('/api/bodian/login/qr/key'));});

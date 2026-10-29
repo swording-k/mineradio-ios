@@ -17,6 +17,7 @@ import UniformTypeIdentifiers
     private let kugou = KugouNativeAPI()
     private let qishuiCatalog = QishuiCatalogAPI()
     private let spotify = SpotifyNativeAPI()
+    private let bodian = BodianNativeAPI()
     @Published private(set) var spotifyPresented = false
     #if os(iOS)
     private let spotifyLogin = SpotifyAccountLogin()
@@ -236,6 +237,13 @@ import UniformTypeIdentifiers
                 else if url.path.hasPrefix("/api/kugou/") { result = try await kugou.handle(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/qishui/") { result = try await qishuiAPI(url, method: method, body: body) }
                 else if url.path.hasPrefix("/api/spotify/") { result = try await spotify.handle(url, method: method, body: body) }
+                else if url.path.hasPrefix("/api/bodian/") {
+                    var payload = try await bodian.handle(url, method: method, body: body)
+                    if url.path == "/api/bodian/login/qr/key", let link = payload["url"] as? String {
+                        payload["qrimg"] = AppleDirectQrLogin.qrImage(link)
+                    }
+                    result = payload
+                }
                 else { result = try await api.handle(url, method: method, body: body) }
                 send(connection, status: 200, type: "application/json", data: try JSONSerialization.data(withJSONObject: result))
             } else {
