@@ -15,7 +15,11 @@ import UniformTypeIdentifiers
     private let media = NeteaseMediaStream()
     private let qq = QQMusicNativeAPI()
     private let kugou = KugouNativeAPI()
-    private let qishuiCatalog = QishuiCatalogAPI()
+    private let qishuiCatalog = QishuiCatalogAPI(supportsEncryptedPlayback: true)
+    private let qishuiAudio = QishuiAudioStore(decode: { data, auth in
+        let decoded = try QishuiAudioDecoder.decode(data, auth: auth)
+        return .init(data: decoded.data, contentType: decoded.contentType)
+    })
     private let spotify = SpotifyNativeAPI()
     private let bodian = BodianNativeAPI()
     @Published private(set) var spotifyPresented = false
@@ -113,11 +117,18 @@ import UniformTypeIdentifiers
             if status["status"] as? String == "mfa_required" { qishui.releaseSigningEnvironment() }
             return status
         case "/api/qishui/logout":
-            _ = try await qishui.logout(); await qishuiCatalog.setSession([:])
+            _ = try await qishui.logout(); await qishuiCatalog.setSession([:]); await qishuiAudio.clear()
             return ["ok": true, "provider": "qishui", "loggedIn": false]
         default:
             await qishuiCatalog.setSession(qishui.sessionSnapshot())
-            return try await qishuiCatalog.handle(url, method: method, body: body)
+            var result = try await qishuiCatalog.handle(url, method: method, body: body)
+            let auth = result.removeValue(forKey: "nativePlaybackAuth") as? String ?? ""
+            if result["encrypted"] as? Bool == true, !auth.isEmpty, let source = result["url"] as? String, let remote = URL(string: source) {
+                let ticket = try await qishuiAudio.register(remoteURL: remote, auth: auth)
+                result["url"] = "http://127.0.0.1:\(port)/api/qishui/audio?ticket=\(ticket)"
+                result["nativeDecoderReady"] = true
+            }
+            return result
         }
     }
     func start() {
@@ -201,8 +212,18 @@ import UniformTypeIdentifiers
 
     private func respond(_ connection: NWConnection, url: URL, method: String, headers: [String: String], body: Data) async {
         do {
-            if url.path == "/api/audio" || url.path == "/api/cover" {
+            if url.path == "/api/qishui/audio" {
+                let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "ticket" }?.value ?? ""
+                let reply = try await qishuiAudio.response(ticket: ticket, method: method, range: headers["range"])
+                send(connection, status: reply.status, type: reply.type, data: reply.data, extra: reply.headers)
+            } else if url.path == "/api/audio" || url.path == "/api/cover" {
                 let text = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "url" }?.value ?? ""
+                if url.path == "/api/audio", let local = URL(string: text), local.scheme == "http", local.host == "127.0.0.1", local.port == Int(port), local.path == "/api/qishui/audio" {
+                    let ticket = URLComponents(url: local, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "ticket" }?.value ?? ""
+                    let reply = try await qishuiAudio.response(ticket: ticket, method: method, range: headers["range"])
+                    send(connection, status: reply.status, type: reply.type, data: reply.data, extra: reply.headers)
+                    return
+                }
                 guard var target = URL(string: text), AppleMediaPolicy.allowed(target) else {
                     send(connection, status: 403, type: "application/json", data: Data("{\"error\":\"MEDIA_HOST_NOT_ALLOWED\"}".utf8)); return
                 }
@@ -274,10 +295,10 @@ import UniformTypeIdentifiers
     }
 
     private func send(_ connection: NWConnection, status: Int, type: String, data: Data, extra: [String: String] = [:]) {
-        var head = "HTTP/1.1 \(status) Response\r\nContent-Type: \(type)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n"
+        var head = "HTTP/1.1 \(status) Response\r\nContent-Type: \(type)\r\nContent-Length: \(extra["Content-Length"] ?? String(data.count))\r\nConnection: close\r\n"
         if extra["Cache-Control"] == nil { head += "Cache-Control: no-store\r\n" }
         head += "X-Content-Type-Options: nosniff\r\n"
-        for (key, value) in extra { head += "\(key): \(value)\r\n" }
+        for (key, value) in extra where key != "Content-Length" { head += "\(key): \(value)\r\n" }
         var packet = Data((head + "\r\n").utf8)
         packet.append(data)
         connection.send(content: packet, completion: .contentProcessed { _ in connection.cancel() })

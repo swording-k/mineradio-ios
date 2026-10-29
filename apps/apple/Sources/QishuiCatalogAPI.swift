@@ -14,6 +14,7 @@ extension QishuiCatalogRequesting {
 }
 
 actor QishuiCatalogAPI {
+    private let supportsEncryptedPlayback: Bool
     private let transport: any QishuiCatalogRequesting
     private var cookies: [String: String] = [:]
     private var generation = 0
@@ -27,7 +28,7 @@ actor QishuiCatalogAPI {
     private var playlistReadInFlight = Set<String>()
     private let deviceID = String(UInt64.random(in: 1_000_000_000_000_000...8_999_999_999_999_999))
 
-    init(transport: any QishuiCatalogRequesting = QishuiCatalogTransport()) { self.transport = transport }
+    init(transport: any QishuiCatalogRequesting = QishuiCatalogTransport(), supportsEncryptedPlayback: Bool = false) { self.transport = transport; self.supportsEncryptedPlayback = supportsEncryptedPlayback }
     func setSession(_ values: [String: String]) {
         let names = Set(["sessionid", "sessionid_ss", "sid_guard", "sid_tt", "uid_tt", "uid_tt_ss", "odin_tt", "ttwid", "passport_csrf_token", "passport_csrf_token_default"])
         let filtered = values.filter { names.contains($0.key) && $0.value.utf8.count <= 8192 && !$0.value.contains("\r") && !$0.value.contains("\n") && !$0.value.contains(";") }
@@ -364,7 +365,7 @@ actor QishuiCatalogAPI {
         guard !candidates.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
         // iOS 当前媒体代理只转发字节，没有 Android 的解密层。
         // 把 PlayAuth 拼进 fragment 不会让 HTMLAudio 解密；优先选择真正可直接播放的流。
-        let streams = candidates.filter { !$0.encrypted }.sorted { $0.bitrate < $1.bitrate }
+        let streams = candidates.filter { !$0.encrypted || (supportsEncryptedPlayback && !$0.auth.isEmpty) }.sorted { $0.bitrate < $1.bitrate }
         guard !streams.isEmpty else { return QishuiCatalogContract.playbackUnavailable("unsupported_encryption") }
 
         func allowed(_ tier: String) -> Bool {
@@ -390,7 +391,7 @@ actor QishuiCatalogAPI {
                 "url": best.url,
                 "playable": true, "trial": trial, "duration": best.duration, "fullDuration": full,
                 "trialDuration": trial ? best.duration : 0, "level": best.requiredTier == "free" ? "standard" : "higher",
-                "br": best.bitrate, "encrypted": false,
+                "br": best.bitrate, "encrypted": best.encrypted, "nativePlaybackAuth": best.auth,
                 "message": trial ? "此音源为平台返回的试听片段。" : ""]
     }
     private func library() async throws -> [String: Any] {

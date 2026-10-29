@@ -19,15 +19,12 @@ function fixture(trial = true) {
   vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-library.js', 'utf8'), context);
   return {context, calls, store};
 }
-test('qishui trial clip is handed to the original source fallback, and only replayed as a clip if no platform takes over', async () => {
+test('qishui trial remains directly playable instead of forcing a failing cross-platform lookup', async () => {
   const f = fixture();
   const data = await f.context.apiJson('/api/qishui/song/url?id=q1&quality=x');
-  assert.equal(data.url, '', 'Fallback must see "no full source" so it searches other logged-in platforms');
-  assert.equal(data.reason, 'trial_only');
-  assert.equal(await f.context.skipFailedQueueItem(0, 7, '', {}), true);
-  assert.deepEqual(f.calls, [['play', 0, 'https://x.douyinvod.com/a.m4a', 1]]);
-  assert.equal(await f.context.skipFailedQueueItem(0, 7, '', {}), false, 'Clip is used once; later skips behave as original');
-  assert.deepEqual(f.calls.at(-1), 'skip');
+  assert.equal(data.url, 'https://x.douyinvod.com/a.m4a');
+  assert.equal(data.trial, true);
+  assert.equal(data.reason, undefined);
 });
 test('full qishui playback and other providers are untouched', async () => {
   const f = fixture(false);

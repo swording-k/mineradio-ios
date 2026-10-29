@@ -7,6 +7,8 @@ const src = names => names.map(name => `apps/apple/Sources/${name}.swift`);
 const providers = ['NeteaseContract','QQMusicNativeAPI','KugouContract','KugouTransport','KugouNativeAPI','QishuiCatalogContract','QishuiCatalogAPI','AppleMediaPolicy'];
 const netease = ['NeteaseEAPI','NeteaseContract','NeteaseTransport','NeteaseNativeAPI','NeteaseFeatureRoutes','NeteaseFeatureContract'];
 const suites = [
+  ['QishuiAudioDecoderTests', ['QishuiAudioDecoder']],
+  ['QishuiAudioStoreTests', ['QishuiCatalogContract','QishuiCatalogAPI','QishuiAudioStore']],
   ['BodianNativeTests', ['BodianContract','BodianNativeAPI']],
   ['EndpointPolicyTests', ['EndpointPolicy']],
   ['AppleAudioActivationTests', ['AppleAudioActivation']],
@@ -27,7 +29,7 @@ const suites = [
   ['QishuiFeatureTests', ['QishuiCatalogContract','QishuiCatalogAPI']],
   ['AppleMediaPolicyTests', providers],
   ['MediaStreamTests', [...providers,'NeteaseMediaStream']],
-  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleCoverCache','AppleDirectQrLogin','BodianContract','BodianNativeAPI','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow','SpotifyContract','SpotifyNativeAPI'])]],
+  ['LoopbackServiceTests', [...new Set([...providers,...netease,'NeteaseMediaStream','AppleHTMLPolicy','AppleCoverCache','AppleDirectQrLogin','BodianContract','BodianNativeAPI','QishuiAudioDecoder','QishuiAudioStore','AppleLocalService','QishuiAuthRuntime','QishuiAuthContract','QishuiSecurityFlow','SpotifyContract','SpotifyNativeAPI'])]],
 ];
 function run(command, args) {
   const result = spawnSync(command, args, {cwd: root, stdio: 'inherit'});

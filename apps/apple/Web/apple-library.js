@@ -1,6 +1,6 @@
 // 移动端功能补齐（与桌面同源的前端逻辑，只补 iOS 缺失的宿主能力）：
 // 1) 自建（内置）歌单：桌面由 Electron 主进程 built-in-playlist-library.js 存盘；iOS 用本机存储实现同一接口。
-// 2) 汽水只给试听片段时，自动用原版「同名同歌手换源」到其它已登录平台（如网易云）把整首放完；都没有才播试听。
+// 2) 保留汽水的可用试听音源，不强制跨平台换源。
 // 3) iPad 与 iPhone 一样显示「歌单」入口（触屏没有桌面左边缘悬停）；触屏隐藏键盘热键设置。
 (function installAppleLibrary() {
   if (window.__mineradioAppleLibrary) return;
@@ -100,59 +100,8 @@
   window.desktopWindow = host;
   if (typeof refreshBuiltInPlaylists === 'function') { try { refreshBuiltInPlaylists(true); } catch (_) {} }
 
-  // ---------- 2) 汽水试听片段 → 自动换源整首播放 ----------
-  if (typeof apiJson === 'function' && typeof skipFailedQueueItem === 'function' && typeof playQueueAt === 'function') {
-    var trialClips = {};
-    var originalApiJson = apiJson;
-    apiJson = async function (url) {
-      var data = await originalApiJson.apply(this, arguments);
-      if (typeof url === 'string' && url.indexOf('/api/qishui/song/url?') === 0 && data && data.url && data.trial) {
-        var id = ''; try { id = new URLSearchParams(url.split('?')[1] || '').get('id') || ''; } catch (_) {}
-        if (id) {
-          trialClips[id] = data;
-          // 交给原版换源流程：先找其它已登录平台的同名同歌手版本，找不到再回到试听片段。
-          return Object.assign({}, data, {url: '', playable: false, reason: 'trial_only', category: 'trial_only'});
-        }
-      }
-      return data;
-    };
-    function trialFor(idx) {
-      var song = typeof playQueue !== 'undefined' && playQueue[idx];
-      if (!song) return null;
-      var key = String(song.id || song.providerSongId || '');
-      var clip = key && trialClips[key];
-      if (clip) delete trialClips[key];
-      return clip || null;
-    }
-    function playTrial(idx, clip, opts) {
-      var po = (opts && opts.playbackOpts) || {};
-      return playQueueAt(idx, {preResolvedPlaybackData: clip, fallbackDepth: 1, startupAutoplay: !!po.startupAutoplay,
-        resumeAt: po.resumeAt, suppressPlayFailureNotice: true}).then(function (ok) { return ok === true; });
-    }
-    var originalSkip = skipFailedQueueItem;
-    skipFailedQueueItem = function (idx, token, message, opts) {
-      var clip = trialFor(idx);
-      if (clip && token === trackSwitchToken) return playTrial(idx, clip, opts);
-      return originalSkip.apply(this, arguments);
-    };
-    if (typeof settleSourceFallbackTerminal === 'function') {
-      var originalSettle = settleSourceFallbackTerminal;
-      settleSourceFallbackTerminal = function (idx, token, message, opts) {
-        var clip = trialFor(idx);
-        if (clip && token === trackSwitchToken) return playTrial(idx, clip, opts);
-        return originalSettle.apply(this, arguments);
-      };
-    }
-    if (typeof handlePlaybackUnavailable === 'function') {
-      var originalUnavailable = handlePlaybackUnavailable;
-      handlePlaybackUnavailable = function (song) {
-        var idx = typeof currentIdx !== 'undefined' ? currentIdx : -1;
-        var clip = idx >= 0 && playQueue[idx] === song ? trialFor(idx) : null;
-        if (clip) { playTrial(idx, clip, {}); return; }
-        return originalUnavailable.apply(this, arguments);
-      };
-    }
-  }
+  // 汽水返回的试听仍是有效音源，交给原版播放并明确显示试听。
+  // 不将有效 URL 改为空来强迫跨平台换源，避免有片段却完全播不出来。
 
   // ---------- 3) 触屏（iPhone 与 iPad 共用） ----------
   // 原版的「账号胶囊自动隐藏」「DIY 按钮自动隐藏」靠鼠标移到右上 / 右下角才出现；触屏没有悬停，

@@ -59,6 +59,12 @@ private actor SEOFixture: QishuiCatalogRequesting {
                 precondition(result["url"] == nil)
             }
         }
+        let nativeAPI = QishuiCatalogAPI(transport: SEOFixture([cipher]), supportsEncryptedPlayback: true)
+        await nativeAPI.setSession(["sessionid": "fixture"])
+        let nativeResult = try await nativeAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(nativeResult["playable"] as? Bool == true)
+        precondition(nativeResult["nativePlaybackAuth"] as? String == "fixture-only")
+        precondition(nativeResult["encrypted"] as? Bool == true)
         let fixture = CatalogFixture()
         let api = QishuiCatalogAPI(transport: fixture)
         let anonymous = await api.validateAccount()
