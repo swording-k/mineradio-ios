@@ -614,6 +614,10 @@ function startVisualGuide(opts) {
     visualGuideResizeBound = true;
     window.addEventListener('resize', positionVisualGuideStep);
     window.addEventListener('scroll', positionVisualGuideStep, true);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', scheduleVisualGuidePositioning);
+      window.visualViewport.addEventListener('scroll', positionVisualGuideStep);
+    }
   }
   showVisualGuideStep(0);
 }
@@ -721,27 +725,53 @@ function positionVisualGuideStep() {
   var rect = guideTargetRect(step);
   ring.classList.toggle('shelf-target', !!(step && step.target === 'shelf'));
   var pad = step && step.target === 'shelf' ? 14 : (step && step.selector === '#bottom-bar' ? 10 : 8);
-  var left = Math.max(12, rect.left - pad);
-  var top = Math.max(12, rect.top - pad);
-  var width = Math.min(innerWidth - left - 12, rect.width + pad * 2);
-  var height = Math.min(innerHeight - top - 12, rect.height + pad * 2);
+  // Both the spotlight and its card must fit the visible, safe part of the screen.
+  var viewport = window.visualViewport;
+  var safe = window.getComputedStyle(guide);
+  var vx = viewport ? viewport.offsetLeft : 0;
+  var vy = viewport ? viewport.offsetTop : 0;
+  var vw = viewport ? viewport.width : innerWidth;
+  var vh = viewport ? viewport.height : innerHeight;
+  var minX = vx + (parseFloat(safe.paddingLeft) || 12);
+  var minY = vy + (parseFloat(safe.paddingTop) || 12);
+  var maxX = vx + vw - (parseFloat(safe.paddingRight) || 12);
+  var maxY = vy + vh - (parseFloat(safe.paddingBottom) || 12);
+  var availableW = Math.max(1, maxX - minX);
+  var availableH = Math.max(1, maxY - minY);
+  var left = Math.max(minX, Math.min(maxX, rect.left - pad));
+  var top = Math.max(minY, Math.min(maxY, rect.top - pad));
+  var right = Math.max(left, Math.min(maxX, rect.right + pad));
+  var bottom = Math.max(top, Math.min(maxY, rect.bottom + pad));
+  // Hidden or offscreen targets should not produce a misleading floating spotlight.
+  ring.style.visibility = right > left && bottom > top ? 'visible' : 'hidden';
   ring.style.left = left + 'px';
   ring.style.top = top + 'px';
-  ring.style.width = Math.max(44, width) + 'px';
-  ring.style.height = Math.max(38, height) + 'px';
+  ring.style.width = (right - left) + 'px';
+  ring.style.height = (bottom - top) + 'px';
   ring.style.borderRadius = step && step.target === 'shelf' ? '28px' : ((step && step.selector === '#bottom-bar') ? '20px' : '16px');
   var scrim = guide.querySelector('.visual-guide-scrim');
   if (scrim) {
     scrim.style.setProperty('--gx', ((rect.left + rect.width / 2) / Math.max(1, innerWidth) * 100).toFixed(2) + '%');
     scrim.style.setProperty('--gy', ((rect.top + rect.height / 2) / Math.max(1, innerHeight) * 100).toFixed(2) + '%');
   }
-  var cardW = Math.min(326, innerWidth - 32);
-  var cardH = card.offsetHeight || 170;
-  var cardLeft = rect.left + rect.width / 2 - cardW / 2;
-  cardLeft = Math.max(16, Math.min(innerWidth - cardW - 16, cardLeft));
+  var cardW = Math.min(326, availableW);
+  card.style.width = cardW + 'px';
+  card.style.maxHeight = availableH + 'px';
+  var cardH = Math.min(card.offsetHeight || 170, availableH);
+  var cardLeft = Math.max(minX, Math.min(maxX - cardW, rect.left + rect.width / 2 - cardW / 2));
   var below = rect.bottom + 18;
   var above = rect.top - cardH - 18;
-  var cardTop = below + cardH < innerHeight - 16 ? below : Math.max(16, above);
+  var cardTop;
+  if (below + cardH <= maxY && below >= minY) cardTop = below;
+  else if (above >= minY && above + cardH <= maxY) cardTop = above;
+  else {
+    // Landscape phones often have room beside a control, but not above/below it.
+    var besideRight = rect.right + 18;
+    var besideLeft = rect.left - cardW - 18;
+    if (besideRight + cardW <= maxX && besideRight >= minX) cardLeft = besideRight;
+    else if (besideLeft >= minX && besideLeft + cardW <= maxX) cardLeft = besideLeft;
+    cardTop = Math.max(minY, Math.min(maxY - cardH, rect.top + rect.height / 2 - cardH / 2));
+  }
   card.style.left = cardLeft + 'px';
   card.style.top = cardTop + 'px';
 }

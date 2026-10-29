@@ -11305,6 +11305,7 @@ body.login-guide-active #login-guide-canvas {
 }
 
 #visual-guide {
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   position: fixed;
   inset: 0;
   z-index: 620;
@@ -11377,6 +11378,9 @@ body.login-guide-active #login-guide-canvas {
 }
 
 .visual-guide-card {
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   position: absolute;
   width: min(326px, calc(100vw - 32px));
   padding: 17px 18px 15px;
@@ -11391,7 +11395,7 @@ body.login-guide-active #login-guide-canvas {
   opacity: 0;
   transform: translateY(10px) scale(.982);
   transition: left .38s cubic-bezier(.16, 1, .3, 1), top .38s cubic-bezier(.16, 1, .3, 1), opacity .26s, transform .38s cubic-bezier(.16, 1, .3, 1), filter .38s;
-  overflow: hidden
+  overflow-x: hidden
 }
 
 .visual-guide-card::before {
