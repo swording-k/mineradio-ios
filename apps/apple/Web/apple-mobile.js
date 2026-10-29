@@ -127,9 +127,16 @@
   // ---------- 3) 页面进程被回收后续播 ----------
   var recovering = /[?&]apple-recover=1/.test(location.search);
   if (recovering) {
-    // 仅本次加载临时打开原版「启动自动播放」，按上次保存的进度继续；不改用户设置。
-    if (typeof startupAutoplayPreference !== 'undefined') startupAutoplayPreference = true;
+    // 回收不是用户点了播放：只有回收前正在播放才自动续播，暂停状态保持暂停。
+    var recoverySnapshot = typeof restoredLastPlaybackSnapshot !== 'undefined' ? restoredLastPlaybackSnapshot : null;
+    if (!recoverySnapshot && typeof readLastPlaybackSnapshot === 'function') recoverySnapshot = readLastPlaybackSnapshot();
+    var resumeAfterRecovery = !!(recoverySnapshot && recoverySnapshot.playing === true);
+    if (typeof startupAutoplayPreference !== 'undefined') startupAutoplayPreference = resumeAfterRecovery;
     if (typeof startupResumeModePreference !== 'undefined') startupResumeModePreference = 'resume';
+    // 原版启动模块可能已按“从头播放”算过一次位置；切换临时恢复模式后必须重算。
+    if (recoverySnapshot && typeof pendingPlaybackResumeAt !== 'undefined' && typeof startupResumeSecondsFromSnapshot === 'function') {
+      pendingPlaybackResumeAt = startupResumeSecondsFromSnapshot(recoverySnapshot);
+    }
     try { history.replaceState(null, '', location.pathname); } catch (_) {}
     var tries = 0;
     var skip = setInterval(function () {
@@ -142,7 +149,7 @@
         setTimeout(function () {
           try {
             if (typeof restoreLastPlaybackSnapshot === 'function' && typeof restoredLastPlaybackSnapshot !== 'undefined' && !restoredLastPlaybackSnapshot) restoreLastPlaybackSnapshot();
-            if (typeof playing !== 'undefined' && !playing && typeof scheduleStartupAutoplayFromSnapshot === 'function') scheduleStartupAutoplayFromSnapshot('apple-recover');
+            if (resumeAfterRecovery && typeof playing !== 'undefined' && !playing && typeof scheduleStartupAutoplayFromSnapshot === 'function') scheduleStartupAutoplayFromSnapshot('apple-recover');
           } catch (_) {}
         }, 600);
       }
