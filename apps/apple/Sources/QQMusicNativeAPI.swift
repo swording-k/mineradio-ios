@@ -77,6 +77,7 @@ actor QQMusicTransport: QQMusicRequesting {
         defer {session.invalidateAndCancel()}
         var request = URLRequest(url: c.url!, timeoutInterval: max(0.25, min(4, budget)))
         request.setValue("bytes=0-8191", forHTTPHeaderField: "Range"); request.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
+        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, [200, 206].contains(http.statusCode), !(http.mimeType ?? "").contains("text"), !(http.mimeType ?? "").contains("json") else {return false}
         var prefix: [UInt8] = []; prefix.reserveCapacity(8192)
@@ -149,14 +150,24 @@ actor QQMusicNativeAPI {
         if force {cachedStatus = nil}
         guard !uin.isEmpty, !musicKey.isEmpty else {return noSession()}
         let profile = try await get("https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg", ["cid": "205360838", "userid": uin, "reqfrom": "1", "g_tk": "5381", "loginUin": uin])
-        guard QQMusicContract.integer(profile["code"]) == 0, let data = profile["data"] as? [String: Any], let creator = data["creator"] as? [String: Any], !(creator["nick"] as? String ?? creator["nickname"] as? String ?? "").isEmpty else {return noSession()}
+        guard QQMusicContract.integer(profile["code"]) == 0, let data = profile["data"] as? [String: Any], let creator = data["creator"] as? [String: Any], !(creator["nick"] as? String ?? creator["nickname"] as? String ?? "").isEmpty else {
+            return noSession().merging(["reason": "profile", "message": "QQ 账号资料获取失败（code \(QQMusicContract.integer(profile["code"]))）"]) { _, b in b }
+        }
         // Public profile lookup is insufficient to verify a session. Require an
         // account-scoped "my liked songs" request to succeed with this authst.
         let liked = try await music(["req_0": ["module": "music.srfDissInfo.DissInfo", "method": "CgiGetDiss", "param": ["disstid": 0, "dirid": 201, "tag": 1, "song_begin": 0, "song_num": 1, "userinfo": 1, "orderlist": 1]]])
-        guard let block = liked["req_0"] as? [String: Any], QQMusicContract.integer(block["code"]) == 0, let account = block["data"] as? [String: Any], account["songlist"] is [Any] else {return noSession()}
+        let block = liked["req_0"] as? [String: Any] ?? [:]
+        guard QQMusicContract.integer(block["code"]) == 0, let account = block["data"] as? [String: Any] else {
+            return noSession().merging(["reason": "liked", "message": "QQ 播放授权未通过（code \(QQMusicContract.integer(block["code"]))），请刷新二维码重试"]) { _, b in b }
+        }
         let directory = account["dirinfo"] as? [String: Any] ?? [:]
         let owner = QQMusicContract.text(directory["uin"] ?? directory["hostuin"] ?? directory["creator_uin"] ?? (account["userinfo"] as? [String: Any])?["uin"])
-        guard !owner.isEmpty, owner == uin else {return noSession()}
+            .filter { $0.isASCII && $0.isNumber }.drop { $0 == "0" }
+        // 能用本账号的 authst 读到「我喜欢」就已是账号级证据；字段缺失时不再误判为未登录，
+        // 只有明确返回了别人的 uin 才拒绝。
+        guard owner.isEmpty || String(owner) == uin else {
+            return noSession().merging(["reason": "owner", "message": "QQ 账号校验不一致，请刷新二维码重试"]) { _, b in b }
+        }
         let result: [String: Any] = ["provider": "qq", "loggedIn": true, "userId": uin, "nickname": creator["nick"] ?? creator["nickname"] ?? "QQ 音乐", "avatar": creator["headpic"] ?? creator["avatar"] ?? "", "hasCookie": true, "playbackKeyReady": true, "playbackReady": true, "membershipKnown": false, "isVip": false, "isSvip": false, "vipLabel": "权益待核验", "profileSource": "qq-profile-and-account-liked", "vipSyncState": "unknown"]
         cachedStatus = result; checked = Date(); return result
     }
@@ -207,23 +218,46 @@ actor QQMusicNativeAPI {
         guard validMid(mid), media.isEmpty || validMid(media) else {throw Failure.invalidRequest}
         let all: [(String, String, String)] = [("RS01", ".flac", "hires"), ("F000", ".flac", "lossless"), ("M800", ".mp3", "exhigh"), ("M500", ".mp3", "standard"), ("C400", ".m4a", "aac")]
         let start = all.firstIndex {$0.2 == quality} ?? 2
-        let candidates = Array(all[start...]); let fileMid = media.isEmpty ? mid : media
-        let filenames = candidates.map {$0.0 + fileMid + $0.1}
-        let response = try await music(["req_0": ["module": "vkey.GetVkeyServer", "method": "CgiGetVkey", "param": ["guid": String(Int.random(in: 10000000...99999999)), "songmid": filenames.map {_ in mid}, "songtype": filenames.map {_ in 0}, "uin": uin.isEmpty ? "0" : uin, "loginflag": 1, "platform": "20", "filename": filenames]]])
-        let block = response["req_0"] as? [String: Any] ?? [:], data = block["data"] as? [String: Any] ?? [:]
-        let infos = data["midurlinfo"] as? [[String: Any]] ?? [], sips = data["sip"] as? [String] ?? ["https://ws.stream.qqmusic.qq.com/"]
+        let candidates = Array(all[start...])
+        // 平行参考安卓 handleQQSongUrl：mediaMid 与 songmid 两种文件名都请求（部分歌曲 mediaMid 对不上）。
+        var mediaIDs: [String] = []
+        if !media.isEmpty { mediaIDs.append(media) }
+        if !mediaIDs.contains(mid) { mediaIDs.append(mid) }
+        let files = mediaIDs.flatMap { id in candidates.map { (name: $0.0 + id + $0.1, level: $0.2) } }
         let deadline = Date().addingTimeInterval(6.2)
-        for info in infos.prefix(5) {
-            guard let path = info["purl"] as? String, !path.isEmpty, !path.hasPrefix("//"), !path.contains("://") else {continue}
-            for sip in sips.prefix(2) {
-                let remaining = deadline.timeIntervalSinceNow; if remaining < 0.3 {break}
-                guard var c = URLComponents(string: sip + path), let initial = c.url, QQMusicContract.allowedMedia(initial) else {continue}
-                c.scheme = "https"; if c.port == 80 {c.port = nil}; guard let url = c.url, (try? await transport.probe(url, budget: min(2, remaining))) == true else {continue}
-                let filename = QQMusicContract.text(info["filename"]), index = filenames.firstIndex(of: filename) ?? 0
-                return ["provider": "qq", "url": url.absoluteString, "playable": true, "playbackReady": true, "trialKnown": false, "loggedIn": !uin.isEmpty && !musicKey.isEmpty, "quality": candidates[index].2, "level": candidates[index].2, "filename": filename]
+        func resolve(_ names: [String], guest: Bool) async throws -> (url: URL, filename: String)? {
+            var comm: [String: Any] = ["uin": guest || uin.isEmpty ? "0" : uin, "format": "json", "ct": guest || musicKey.isEmpty ? 24 : 19, "cv": 0]
+            if !guest, !musicKey.isEmpty { comm["authst"] = musicKey }
+            let param: [String: Any] = ["guid": String(Int.random(in: 10000000...99999999)), "songmid": names.map {_ in mid}, "songtype": names.map {_ in 0},
+                                        "uin": guest || uin.isEmpty ? "0" : uin, "loginflag": 1, "platform": "20", "filename": names]
+            let response = try await music(["comm": comm, "req_0": ["module": "vkey.GetVkeyServer", "method": "CgiGetVkey", "param": param]])
+            let data = (response["req_0"] as? [String: Any])?["data"] as? [String: Any] ?? [:]
+            let infos = (data["midurlinfo"] as? [[String: Any]] ?? []).filter { !(($0["purl"] as? String) ?? "").isEmpty }
+            let sips = (data["sip"] as? [String]).flatMap { $0.isEmpty ? nil : $0 } ?? ["https://ws.stream.qqmusic.qq.com/"]
+            for info in infos.prefix(8) {
+                guard let path = info["purl"] as? String, !path.hasPrefix("//"), !path.contains("://") else {continue}
+                for sip in sips.prefix(2) {
+                    let remaining = deadline.timeIntervalSinceNow; if remaining < 0.3 {return nil}
+                    guard var c = URLComponents(string: sip + path), let initial = c.url, QQMusicContract.allowedMedia(initial) else {continue}
+                    c.scheme = "https"; if c.port == 80 {c.port = nil}
+                    if let url = c.url, (try? await transport.probe(url, budget: min(2, remaining))) == true { return (url, QQMusicContract.text(info["filename"])) }
+                }
             }
+            return nil
         }
-        return ["provider": "qq", "url": "", "playable": false, "error": "QQ_URL_UNAVAILABLE", "message": "QQ 音乐未提供可验证的播放音源，请检查账号授权或歌曲权限。", "qqCode": block["code"] ?? -1]
+        if let hit = try await resolve(files.map(\.name), guest: false) {
+            let level = files.first { $0.name == hit.filename }?.level ?? candidates[0].2
+            return ["provider": "qq", "url": hit.url.absoluteString, "playable": true, "playbackReady": true, "trial": false, "trialKnown": false,
+                    "loggedIn": !uin.isEmpty && !musicKey.isEmpty, "quality": level, "level": level, "filename": hit.filename]
+        }
+        // 安卓同款兜底：账号拿不到音源（非会员 / VIP 歌）时用游客身份取 128k，通常是试听片段，交给前端换源或播试听。
+        if let hit = try? await resolve(["M500" + (media.isEmpty ? mid : media) + ".mp3"], guest: true) {
+            return ["provider": "qq", "url": hit.url.absoluteString, "playable": true, "playbackReady": true, "trial": true, "trialKnown": true,
+                    "loggedIn": !uin.isEmpty && !musicKey.isEmpty, "quality": "standard", "level": "standard", "filename": hit.filename,
+                    "message": "QQ 音乐仅返回试听片段（歌曲可能需要 VIP）。"]
+        }
+        return ["provider": "qq", "url": "", "playable": false, "error": "QQ_URL_UNAVAILABLE", "loggedIn": !uin.isEmpty && !musicKey.isEmpty,
+                "message": musicKey.isEmpty ? "QQ 播放授权缺失，请重新扫码登录。" : "QQ 音乐未提供这首歌的音源（可能需要 VIP 或已下架）。"]
     }
     private func lyric(_ mid: String) async throws -> [String: Any] {
         guard validMid(mid) else {throw Failure.invalidRequest}

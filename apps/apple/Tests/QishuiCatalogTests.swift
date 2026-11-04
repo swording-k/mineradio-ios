@@ -24,8 +24,111 @@ private actor CatalogFixture: QishuiCatalogRequesting {
         return ["data": [:]]
     }
 }
+private actor SEOFixture: QishuiCatalogRequesting {
+    let streams: [[String: Any]]
+    let nested: Bool
+    init(_ streams: [[String: Any]], nested: Bool = false) { self.streams = streams; self.nested = nested }
+    func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        if url.path == "/luna/pc/me" {
+            return ["data": ["my_info": ["user_id": "42"], "vip_info": ["is_vip": true, "vip_expire_time": 4102444800]]]
+        }
+        if url.path == "/luna/h5/seo_track" {
+            if nested { return ["seo_track": ["track": ["id": "101", "duration_ms": 204723]], "track_player": ["url_player_info": "https://vod.volcengineapi.com/?Action=GetPlayInfo"]] }
+            return ["data": ["track": ["id": "101", "duration_ms": 180000],
+                             "track_player": ["url_player_info": "https://vod.volcengineapi.com/?Action=GetPlayInfo"]]]
+        }
+        return ["data": [:]]
+    }
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        return ["Result": ["Data": ["PlayInfoList": streams]]]
+    }
+}
+private actor WebTrackFixture: QishuiCatalogRequesting {
+    var postReferer = "", webGet = false
+    func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        if url.path == "/luna/pc/me" { return ["data": ["my_info": ["user_id": "42"], "vip_info": ["is_vip": true, "vip_expire_time": 4102444800]]] }
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if url.path == "/luna/pc/track_v2", q.contains(where: { $0.name == "device_platform" && $0.value == "web" }), q.contains(where: { $0.name == "track_id" && $0.value == "101" }) {
+            webGet = true
+            return ["data": ["track": ["id": "101", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/web.m4a", "duration": 180]]]]]]
+        }
+        return ["data": [:]]
+    }
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
+        postReferer = headers["Referer"] ?? ""
+        throw QishuiCatalogFailure.invalidResponse
+    }
+    func checks() -> Bool { postReferer == "https://www.qishui.com/" && webGet }
+}
+private actor PCPostFixture: QishuiCatalogRequesting {
+    let previewFirst: Bool
+    init(previewFirst: Bool = false) { self.previewFirst = previewFirst }
+    func request(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        if url.path == "/luna/pc/me" { return ["data": ["my_info": ["user_id": "42"]]] }
+        if previewFirst && url.path == "/luna/pc/track_v2" {
+            return ["status_code": 0, "data": ["track": ["id": "101", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/get-full.m4a", "duration": 180]]]]]]
+        }
+        return ["data": [:]]
+    }
+    func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard url.path == "/luna/pc/track_v2", query.contains(where: { $0.name == "device_platform" && $0.value == "windows" }) else { throw QishuiCatalogFailure.invalidRequest }
+        let input = try JSONSerialization.jsonObject(with: body) as! [String: String]
+        precondition(input["track_id"] == "101" && input["scene_name"] == "library" && input["queue_type"] == "favorite_track_playlist")
+        precondition(headers["Cookie"]?.contains("sessionid=fixture") == true)
+        return ["status_code": 0, "data": ["track": ["id": "101", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/pc-post.m4a", "duration": previewFirst ? 60 : 180]]]]]]
+    }
+}
 @main struct QishuiCatalogTests {
     static func main() async throws {
+        let previewAPI = QishuiCatalogAPI(transport: PCPostFixture(previewFirst: true))
+        await previewAPI.setSession(["sessionid": "fixture"])
+        let upgraded = try await previewAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(upgraded["url"] as? String == "https://music.douyincdn.com/get-full.m4a", "A preview must not suppress a later full source")
+        let pcPostAPI = QishuiCatalogAPI(transport: PCPostFixture())
+        await pcPostAPI.setSession(["sessionid": "fixture"])
+        let pcPostResult = try await pcPostAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(pcPostResult["url"] as? String == "https://music.douyincdn.com/pc-post.m4a", "PC POST source must be tried before public previews")
+
+        let clear: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/clear.m4a", "Duration": 30, "Bitrate": 128000]
+        let cipher: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/encrypted.m4a", "Duration": 180, "Bitrate": 192000, "PlayAuth": "fixture-only"]
+        let nestedCipher: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/encrypted.m4a", "EncryptInfo": ["method": "fixture"]]
+        for (streams, expectedPlayable) in [([cipher], false), ([nestedCipher], false), ([clear, cipher], true)] {
+            let seoAPI = QishuiCatalogAPI(transport: SEOFixture(streams))
+            await seoAPI.setSession(["sessionid": "fixture"])
+            let result = try await seoAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+            precondition(result["playable"] as? Bool == expectedPlayable, "Encrypted SEO audio must not be advertised as HTMLAudio-playable")
+            if expectedPlayable {
+                precondition(result["url"] as? String == clear["MainPlayUrl"] as? String)
+                precondition(result["trial"] as? Bool == true)
+            } else {
+                precondition(result["reason"] as? String == "unsupported_encryption")
+                precondition(result["url"] == nil)
+            }
+        }
+        let nativeAPI = QishuiCatalogAPI(transport: SEOFixture([cipher]), supportsEncryptedPlayback: true)
+        await nativeAPI.setSession(["sessionid": "fixture"])
+        let nativeResult = try await nativeAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(nativeResult["playable"] as? Bool == true)
+        precondition(nativeResult["nativePlaybackAuth"] as? String == "fixture-only")
+        precondition(nativeResult["encrypted"] as? Bool == true)
+        let webFixture = WebTrackFixture()
+        let retryAPI = QishuiCatalogAPI(transport: webFixture)
+        await retryAPI.setSession(["sessionid": "fixture"])
+        let retryResult = try await retryAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+        precondition(retryResult["playable"] as? Bool == true, "Failed Web POST must retry matching Web GET")
+        let retried = await webFixture.checks()
+        precondition(retried, "POST needs official Referer and GET must retain Web parameters")
+        let long: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/long.m4a", "Duration": 204.723, "Bitrate": 128000]
+        let short: [String: Any] = ["MainPlayUrl": "https://music.douyincdn.com/short.m4a", "Duration": 60.001, "Bitrate": 192000]
+        for streams in [[short], [short, long]] {
+            let nestedAPI = QishuiCatalogAPI(transport: SEOFixture(streams, nested: true))
+            await nestedAPI.setSession(["sessionid": "fixture"])
+            let result = try await nestedAPI.handle(URL(string: "http://127.0.0.1/api/qishui/song/url?id=101")!, method: "GET", body: Data())
+            precondition(result["fullDuration"] as? Double == 204.723, "SEO wrapper must preserve full track duration")
+            precondition(result["duration"] as? Double == (streams.count == 1 ? 60.001 : 204.723))
+            precondition(result["trial"] as? Bool == (streams.count == 1), "VIP cannot turn a real 60-second stream into a full track")
+        }
         let fixture = CatalogFixture()
         let api = QishuiCatalogAPI(transport: fixture)
         let anonymous = await api.validateAccount()
@@ -48,6 +151,19 @@ private actor CatalogFixture: QishuiCatalogRequesting {
         precondition(!QishuiCatalogContract.allowedAPI(URL(string: "https://api.qishui.com.evil.test/luna/pc/me")!))
         precondition(!QishuiCatalogContract.allowedAPI(URL(string: "https://api.qishui.com/private")!))
         precondition(!QishuiCatalogContract.allowedMedia(URL(string: "https://127.0.0.1/audio.m4a")!))
+        // 汽水封面：urls 为前缀，需拼 uri 与尺寸模板（对照桌面 qishuiImageUrl）。
+        precondition(QishuiCatalogContract.image(["urls": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos-cn-v-2774c002/abc"])
+                     == "https://p3-luna.douyinpic.com/img/tos-cn-v-2774c002/abc~c5_300x300.jpg")
+        precondition(QishuiCatalogContract.image(["urls": ["https://evil.test/img/"], "uri": "x"]).isEmpty)
+        // 与桌面 qishuiImageUrl 对齐：对象拼 uri + 尺寸；字符串无模板时追加尺寸；已有模板保持原样。
+        precondition(QishuiCatalogContract.qishuiImage("~c5_375x375.jpg", nil, ["url_list": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos/a"])
+                     == "https://p3-luna.douyinpic.com/img/tos/a~c5_375x375.jpg")
+        precondition(QishuiCatalogContract.qishuiImage("~c5_300x300.jpg", "https://p3-luna.douyinpic.com/img/tos/b")
+                     == "https://p3-luna.douyinpic.com/img/tos/b~c5_300x300.jpg")
+        precondition(QishuiCatalogContract.qishuiImage("~c5_300x300.jpg", "https://p3-luna.douyinpic.com/img/tos/c~tplv-x:0:360.image")
+                     == "https://p3-luna.douyinpic.com/img/tos/c~tplv-x:0:360.image")
+        let albumCover = QishuiCatalogContract.songs([["track": ["id": "7", "name": "S", "album": ["url_cover": ["urls": ["https://p3-luna.douyinpic.com/img/"], "uri": "tos/al"]]]]])
+        precondition(albumCover.first?["cover"] as? String == "https://p3-luna.douyinpic.com/img/tos/al~c5_375x375.jpg", "album.url_cover must be used like desktop")
         precondition(QishuiCatalogContract.playback(["data": ["track": ["id": "1", "duration_ms": 180000, "label_info": ["only_vip_playable": true], "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/private.m4a", "duration": 180]]]]]], membership: [:], publicSource: false)["playable"] as? Bool == false)
         let svipOnly: [String: Any] = ["data": ["track": ["id": "1", "duration_ms": 180000, "audio_info": ["play_info_list": [["url": "https://music.douyincdn.com/hires.flac", "duration": 180, "quality": "hires"]]]]]]
         precondition(QishuiCatalogContract.playback(svipOnly, membership: ["membershipKnown": true, "isVip": true, "isSvip": false], publicSource: false)["playable"] as? Bool == false)

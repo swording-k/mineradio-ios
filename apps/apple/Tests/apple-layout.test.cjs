@@ -160,3 +160,16 @@ test('a touch near the hidden FX button cannot open its hover bridge; explicit D
   f.context.toggleFxPanel();assert.equal(calls,1);
   f.context.visualGuideActive=true;f.context.setPeek({},true,'fx');assert.equal(calls,2);
 });
+test('touch tap on the DIY (FX) button explicitly opens and closes the visual console',()=>{
+  let fab, panel; const peeks=[];
+  const f=touchFixture((context,elements,node)=>{
+    fab=elements['fx-fab']=node(); panel=elements['fx-panel']=node();
+    context.setPeek=(el,on,key)=>{peeks.push([on,key]); if(on) panel.classList.add('peek'); else panel.classList.remove('peek');};
+    context.toggleFxPanel=force=>{ if(force===false){panel.classList.remove('show','peek');return;} context.setPeek(panel,true,'fx'); };
+  });
+  const tap={preventDefault(){},stopPropagation(){}};
+  fab.emit('click',tap);
+  assert(panel.classList.contains('peek'),'DIY tap must open the console on touch devices');
+  fab.emit('click',tap);
+  assert(!panel.classList.contains('peek'),'second DIY tap must close the console');
+});

@@ -1,6 +1,11 @@
 import Foundation
 @main struct AppleMediaPolicyTests {
     static func main() {
+        for host in ["img4.kuwo.cn", "ga-sycdn.kuwo.cn"] {
+            precondition(AppleMediaPolicy.allowed(URL(string: "https://\(host)/media.mp3")!))
+            precondition(!AppleMediaPolicy.allowed(URL(string: "https://\(host).evil.test/media.mp3")!))
+        }
+        precondition(!AppleMediaPolicy.allowed(URL(string: "https://bd-api.kuwo.cn/api/private")!))
         for text in ["https://m801.music.126.net/song.mp3", "https://isure.stream.qqmusic.qq.com/track.m4a", "https://imge.kugou.com/cover.jpg", "https://y.qq.com/music/photo_new/T002.jpg"] {
             precondition(AppleMediaPolicy.allowed(URL(string: text)!))
         }

@@ -5,6 +5,16 @@ import CryptoKit
 enum KugouContract {
     static let cookieNames: Set<String> = ["KuGoo", "Kugou", "kugou", "token", "Token", "userid", "UserId", "KugooID", "kugouID", "kg_mid", "KG_MID", "kg_dfid", "KG_DFID", "NickName"]
     static func md5(_ value: String) -> String { Insecure.MD5.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined() }
+    /// 安卓 kugouLiteMid：md5(seed) 的 128 位整数十进制表示。
+    static func liteMid(_ seed: String) -> String {
+        var digits: [UInt8] = [0]                       // 小端十进制位
+        for byte in Insecure.MD5.hash(data: Data((seed.isEmpty ? "guest" : seed).utf8)) {
+            var carry = Int(byte)
+            for i in 0..<digits.count { let v = Int(digits[i]) * 256 + carry; digits[i] = UInt8(v % 10); carry = v / 10 }
+            while carry > 0 { digits.append(UInt8(carry % 10)); carry /= 10 }
+        }
+        return String(digits.reversed().map { Character(String($0)) })
+    }
     static func signature(_ params: [String: String], body: String = "") -> String {
         let salt = "NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt"
         return md5(salt + params.keys.sorted().map { "\($0)=\(params[$0]!)" }.joined() + body + salt)

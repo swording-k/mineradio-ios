@@ -8,6 +8,9 @@ struct OriginalPlayerView: UIViewRepresentable {
     var sessionToken: String? = nil
     var accountPresented = false
     var openAccount: ((String) async -> [String: Any])? = nil
+    /// 原生播放状态中心；iPhone 上同时启用原生控制条。
+    var nowPlaying: NowPlayingModel? = nil
+    var nativeControlBar = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -20,6 +23,15 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDiagnostics")
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleSaveImage")
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDevice")
+        if nowPlaying != nil {
+            config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleNowPlaying")
+            if nativeControlBar {
+                config.userContentController.addUserScript(WKUserScript(source: "window.__mineradioAppleNativeControls = true;",
+                                                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            }
+        }
         config.setURLSchemeHandler(BundledPlayerHandler(), forURLScheme: "mineradio-app")
         if let sessionToken, let tokenJSON = try? JSONSerialization.data(withJSONObject: [sessionToken]),
            let tokenText = String(data: tokenJSON, encoding: .utf8) {
@@ -43,6 +55,12 @@ struct OriginalPlayerView: UIViewRepresentable {
             """
             config.userContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        // WebKit 不提供 navigator.deviceMemory，原版引擎因此无法识别低内存设备。
+        // 在模块加载前提供真实物理内存（GB，取整），让原版 lowSpec 判定生效。
+        let memoryGB = max(1, Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded()))
+        config.userContentController.addUserScript(WKUserScript(source: """
+            (() => { try { if (!('deviceMemory' in navigator)) Object.defineProperty(Navigator.prototype, 'deviceMemory', {configurable: true, get: () => \(memoryGB)}); } catch (_) {} })();
+            """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG && targetEnvironment(simulator)
         if ProcessInfo.processInfo.arguments.contains("--apple-power-smoke") {
             config.userContentController.addUserScript(WKUserScript(source: ApplePowerSmoke.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -63,6 +81,12 @@ struct OriginalPlayerView: UIViewRepresentable {
         // playable after that await; video retains WebKit's gesture requirement.
         config.mediaTypesRequiringUserActionForPlayback = [.video]
         let view = WKWebView(frame: .zero, configuration: config)
+        context.coordinator.webView = view
+        nowPlaying?.send = { [weak view] name, value in
+            guard let view, let data = try? JSONSerialization.data(withJSONObject: [name, value ?? NSNull()]),
+                  let args = String(data: data, encoding: .utf8) else { return }
+            view.evaluateJavaScript("window.__mineradioAppleCommand && window.__mineradioAppleCommand.apply(null, \(args))", completionHandler: nil)
+        }
         view.navigationDelegate = context.coordinator
         view.uiDelegate = context.coordinator
         view.isOpaque = false
@@ -86,12 +110,27 @@ struct OriginalPlayerView: UIViewRepresentable {
         var parent: OriginalPlayerView
         private var presentedState: Bool?
         private var memoryWarning: NSObjectProtocol?
+        weak var webView: WKWebView?
+        /// 当前内存压力档位（0-3），WebContent 重启后据此恢复，避免重启后立刻再次爆内存。
+        private var pressureLevel = 0
+        private var recoveries: [Date] = []
         init(_ parent: OriginalPlayerView) {
             self.parent = parent
             super.init()
             AppleDiagnostics.shared.recordNative("view-created")
-            memoryWarning = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { _ in
-                Task { @MainActor in AppleDiagnostics.shared.recordNative("memory-warning") }
+            memoryWarning = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    AppleDiagnostics.shared.recordNative("memory-warning")
+                    self?.relieveMemoryPressure()
+                }
+            }
+        }
+        /// 把系统内存警告转交给原版引擎：逐级降低内部渲染分辨率并深度裁剪缓存（apple-memory.js）。
+        private func relieveMemoryPressure() {
+            webView?.evaluateJavaScript("window.__mineradioAppleMemoryPressure ? window.__mineradioAppleMemoryPressure('warning').level : -1") { [weak self] result, _ in
+                Task { @MainActor in
+                    if let level = result as? Int, level >= 0 { self?.pressureLevel = max(self?.pressureLevel ?? 0, level) }
+                }
             }
         }
         deinit { if let memoryWarning { NotificationCenter.default.removeObserver(memoryWarning) } }
@@ -121,6 +160,22 @@ struct OriginalPlayerView: UIViewRepresentable {
                 AppleDiagnostics.shared.recordWeb(input)
                 replyHandler(["recorded": true], nil); return
             }
+            if message.name == "appleSaveImage", let input = message.body as? [String: Any],
+               let text = input["dataURL"] as? String, text.hasPrefix("data:image/png;base64,"), text.count < 4_000_000,
+               let data = Data(base64Encoded: String(text.dropFirst("data:image/png;base64,".count))), let image = UIImage(data: data) {
+                UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                replyHandler(["saved": true], nil); return
+            }
+            if message.name == "appleDevice", let input = message.body as? [String: Any] {
+                AppleDeviceSettings.shared.apply(keepAwake: input["keepAwake"] as? Bool ?? false,
+                                                 haptics: input["haptics"] as? Bool ?? true,
+                                                 orientation: input["orientation"] as? String ?? "auto")
+                replyHandler(nil, nil); return
+            }
+            if message.name == "appleNowPlaying", let input = message.body as? [String: Any] {
+                parent.nowPlaying?.receive(input)
+                replyHandler(nil, nil); return
+            }
             if message.name == "appleAudioActivate" {
                 Task { @MainActor in
                     do {
@@ -137,12 +192,46 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { report(error) }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { report(error) }
+        #if DEBUG && targetEnvironment(simulator)
+        /// 仅模拟器调试：轮询 Documents/inspect.js，有变化就在页面里执行，结果写入 inspect-result.json。
+        /// 用于开发时自动驱动界面、截图检查；Release 与真机构建不包含。
+        private var inspector: Timer?
+        private var inspectorStamp = Date.distantPast
+        func startInspector(_ webView: WKWebView) {
+            guard inspector == nil, let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+            let script = docs.appendingPathComponent("inspect.js"), output = docs.appendingPathComponent("inspect-result.json")
+            inspector = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true) { [weak self, weak webView] _ in
+                Task { @MainActor in
+                    guard let self, let webView,
+                          let stamp = (try? FileManager.default.attributesOfItem(atPath: script.path))?[.modificationDate] as? Date,
+                          stamp > self.inspectorStamp, let source = try? String(contentsOf: script, encoding: .utf8) else { return }
+                    self.inspectorStamp = stamp
+                    webView.callAsyncJavaScript(source, arguments: [:], in: nil, in: .page) { result in
+                        let value: Any
+                        switch result {
+                        case .success(let v): value = ["ok": true, "value": v ?? NSNull()]
+                        case .failure(let e): value = ["ok": false, "error": "\(e)"]
+                        }
+                        let data = (try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .fragmentsAllowed]))
+                            ?? Data("{\"ok\":false,\"error\":\"unserializable\"}".utf8)
+                        try? data.write(to: output)
+                    }
+                }
+            }
+        }
+        #endif
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             AppleDiagnostics.shared.recordNative("page-loaded")
+            #if DEBUG && targetEnvironment(simulator)
+            startInspector(webView)
+            #endif
             // WebKit may configure its scroll recognizers while loading the page.
             webView.scrollView.bouncesZoom = false
             parent.failure = nil
             updateAccountPresentation(webView, force: true)
+            if pressureLevel > 0 {
+                webView.evaluateJavaScript("window.__mineradioAppleMemoryPressure && window.__mineradioAppleMemoryPressure('restore', \(pressureLevel))", completionHandler: nil)
+            }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--native-smoke"), webView.url?.host == "127.0.0.1" {
                 webView.callAsyncJavaScript("""
@@ -161,7 +250,19 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             AppleDiagnostics.shared.recordNative("webcontent-terminated")
-            parent.failure = "页面进程已退出。请重试；如重复发生，需要降低动效资源占用。"
+            // 页面进程被系统回收时自动恢复，而不是停在黑屏/错误页。
+            // 每次恢复提高一档内存压力；3 分钟内连续 3 次才交给用户手动重试，防止无限重启。
+            let now = Date()
+            recoveries = recoveries.filter { now.timeIntervalSince($0) < 180 } + [now]
+            pressureLevel = min(3, pressureLevel + 1)
+            if recoveries.count <= 2 {
+                // 带上恢复标记重新加载：页面会跳过启动页并按上次保存的进度续播，而不是从头开始。
+                var c = URLComponents(url: parent.endpoint, resolvingAgainstBaseURL: false)
+                c?.queryItems = [URLQueryItem(name: "apple-recover", value: "1")]
+                if let url = c?.url { webView.load(URLRequest(url: url, timeoutInterval: 20)) } else { webView.reload() }
+            } else {
+                parent.failure = "播放器页面多次被系统回收（内存不足）。请点重试；建议在视觉控制台降低画质档位。"
+            }
         }
         private func report(_ error: Error) {
             if (error as NSError).code != NSURLErrorCancelled {
@@ -177,6 +278,37 @@ struct OriginalPlayerView: UIViewRepresentable {
                 UIApplication.shared.open(url)
                 decisionHandler(.cancel)
             } else { decisionHandler(.allow) }
+        }
+        // 原版用 window.alert / confirm / prompt（如「新建内置歌单」要输入名字、删除要确认）。
+        // WKWebView 不实现这三个回调时会静默返回空，按钮看起来「点了没用」。这里用系统弹窗承接。
+        private func presenter(_ webView: WKWebView) -> UIViewController? {
+            var top = webView.window?.rootViewController
+            while let next = top?.presentedViewController { top = next }
+            return top
+        }
+        func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+            guard let host = presenter(webView) else { completionHandler(); return }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "好", style: .default) { _ in completionHandler() })
+            host.present(alert, animated: true)
+        }
+        func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+            guard let host = presenter(webView) else { completionHandler(false); return }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(false) })
+            alert.addAction(UIAlertAction(title: "确定", style: .default) { _ in completionHandler(true) })
+            host.present(alert, animated: true)
+        }
+        func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                     initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+            guard let host = presenter(webView) else { completionHandler(nil); return }
+            let alert = UIAlertController(title: prompt, message: nil, preferredStyle: .alert)
+            alert.addTextField { $0.text = defaultText; $0.clearButtonMode = .whileEditing }
+            alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(nil) })
+            alert.addAction(UIAlertAction(title: "确定", style: .default) { [weak alert] _ in completionHandler(alert?.textFields?.first?.text ?? "") })
+            host.present(alert, animated: true)
         }
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = action.request.url, ["http", "https"].contains(url.scheme ?? "") { UIApplication.shared.open(url) }

@@ -6,12 +6,14 @@ enum AppleMediaPolicy {
               url.port == nil || url.port == 80 || url.port == 443 else { return false }
         if NeteaseContract.allowedMedia(url) || QQMusicContract.allowedMedia(url) || KugouContract.allowedMedia(url) || QishuiCatalogContract.allowedMedia(url) { return true }
         let host = url.host?.lowercased() ?? ""
+        if ["img1.kuwo.cn", "img2.kuwo.cn", "img3.kuwo.cn", "img4.kuwo.cn", "ga-sycdn.kuwo.cn"].contains(host) { return true }
         if host == "i.scdn.co" && url.path.hasPrefix("/image/") { return true }
         return (host == "y.qq.com" && url.path.hasPrefix("/music/photo_new/")) ||
             ["imge.kugou.com", "imgessl.kugou.com"].contains(host)
     }
     static func referer(_ url: URL) -> String {
         let host = url.host?.lowercased() ?? ""
+        if host.hasSuffix(".kuwo.cn") { return "https://bodian.kuwo.cn/" }
         if host == "i.scdn.co" { return "https://open.spotify.com/" }
         if host == "qq.com" || host.hasSuffix(".qq.com") { return "https://y.qq.com/" }
         if host == "kugou.com" || host.hasSuffix(".kugou.com") { return "https://www.kugou.com/" }

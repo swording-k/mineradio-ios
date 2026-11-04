@@ -38,3 +38,14 @@ test('missing app configuration and cancelled authentication never pretend a con
   assert(!f.calls.includes('library'));assert(!f.calls.includes('closed'));assert.equal(f.ctx.spotifyOAuthBusy,false);
   assert.equal(f.nodes['qr-status'].textContent,'已取消');
 });
+
+test('user can save their own public Client ID and invalid IDs never reach native API',async()=>{
+ const f=fixture({loggedIn:false},false), requests=[];
+ f.ctx.apiJson=async(url,opts)=>{requests.push({url,opts});return {ok:true,oauthConfigured:true,clientId:'a'.repeat(32)};};
+ await assert.rejects(()=>f.ctx.window.__mineradioAppleSaveSpotifyConfig('bad'));
+ assert.equal(requests.length,0);
+ await f.ctx.window.__mineradioAppleSaveSpotifyConfig('a'.repeat(32));
+ assert.equal(requests[0].url,'/api/spotify/config');
+ assert.equal(JSON.parse(requests[0].opts.body).clientId,'a'.repeat(32));
+ assert.equal(f.ctx.spotifyLoginStatus.oauthConfigured,true);
+});

@@ -35,7 +35,10 @@ private actor LibraryFixture: KugouRequesting {
             precondition(request.value(forHTTPHeaderField: "x-router") == "cloudlist.service.kugou.com")
             var params = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
             let signature = params.removeValue(forKey: "signature")
-            precondition(signature == KugouContract.signature(params, body: String(decoding: request.httpBody!, as: UTF8.self)))
+            let bodyText = String(decoding: request.httpBody!, as: UTF8.self), lite = "LnT6xpN3khm36zse0QzvmgTZ3waWdRSA"
+            // 先用安卓同款 lite（appid 3116）签名，失败再回退 H5 签名；两种都必须是正确签名。
+            let liteSigned = KugouContract.md5(lite + params.keys.sorted().map { "\($0)=\(params[$0]!)" }.joined() + bodyText + lite)
+            precondition(signature == KugouContract.signature(params, body: bodyText) || (params["appid"] == "3116" && signature == liteSigned))
             let song = (payload["data"] as! [[String: Any]])[0]
             if url.path == "/v6/add_song" {
                 precondition(params["last_area"] == "gztx" && params["last_time"] != nil)

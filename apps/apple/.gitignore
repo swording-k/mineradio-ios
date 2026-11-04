@@ -3,3 +3,4 @@ build-device/
 *.xcodeproj/
 Info.plist
 GeneratedWeb/
+build-sim/

@@ -28,8 +28,36 @@
   var panel = document.createElement('div'); panel.id = 'apple-spotify-info';
   panel.textContent = '同步 Spotify 歌单、喜欢的歌曲与搜索。播放时会匹配已授权且可用的其他音乐源；匹配结果可能与原曲版本不同。';
   var drawer = document.getElementById('login-auth-drawer'); if (drawer) drawer.appendChild(panel);
+  var callback = 'com.swordingk.mineradio.apple://spotify/callback';
+  var setup = document.createElement('div'); setup.id = 'apple-spotify-setup';
+  var help = document.createElement('p'); help.textContent = '与安卓端相同：先在 Spotify Developer Dashboard 创建应用，将下方回调登记到该应用，再填写公开 Client ID。不要填写密码或 Client Secret。';
+  var dashboard = document.createElement('a'); dashboard.href = 'https://developer.spotify.com/dashboard'; dashboard.textContent = '打开 Spotify 开发者后台'; dashboard.target = '_blank';
+  var input = document.createElement('input'); input.id = 'apple-spotify-client-id'; input.type = 'text'; input.placeholder = 'Spotify Client ID（32 位公开编号）'; input.maxLength = 32; input.autocomplete = 'off'; input.setAttribute('aria-label', 'Spotify Client ID');
+  var uri = document.createElement('code'); uri.textContent = callback;
+  var copy = document.createElement('button'); copy.type = 'button'; copy.textContent = '复制 iOS 回调地址';
+  copy.onclick = async function () { try { await window.navigator.clipboard.writeText(callback); showToast('回调地址已复制'); } catch (_) { showToast('请长按上方回调地址复制'); } };
+  var save = document.createElement('button'); save.type = 'button'; save.textContent = '保存并授权';
+  [help,dashboard,input,uri,copy,save].forEach(function(n){setup.appendChild(n);}); panel.appendChild(setup);
+  var configBusy = false;
+  window.__mineradioAppleSaveSpotifyConfig = async function (value) {
+    var id = String(value || '').trim();
+    if (!/^[0-9a-f]{32}$/i.test(id)) throw new Error('请输入 32 位 Spotify Client ID，不是账号或密码。');
+    var result = await apiJson('/api/spotify/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({clientId:id})});
+    if (!result || result.ok !== true) throw new Error(result && result.message || '配置未能保存，请重试。');
+    spotifyLoginStatus = Object.assign({}, spotifyLoginStatus, result);
+    input.value = result.clientId || id;
+    updateLoginProviderUi();
+    return result;
+  };
+  save.onclick = async function () {
+    if (configBusy || spotifyOAuthBusy) return;
+    configBusy = true; save.disabled = true;
+    try { await window.__mineradioAppleSaveSpotifyConfig(input.value); await openSpotifyWebLogin(); }
+    catch (e) { var status = document.getElementById('qr-status'); if (status) status.textContent = e.message || '配置保存失败'; }
+    finally { configBusy = false; save.disabled = false; }
+  };
   var style = document.createElement('style');
-  style.textContent = 'body.apple-client #login-provider-spotify{color:#1ed760;min-height:52px}body.apple-client #apple-spotify-info{display:none;padding:12px 0;font-size:13px;line-height:1.7;color:rgba(255,255,255,.65)}body.apple-client .apple-spotify-selected #apple-spotify-info{display:block}body.apple-client .apple-spotify-selected > .login-auth-copy{display:block}body.apple-client .apple-spotify-selected > .login-auth-actions{display:flex;flex-wrap:wrap}body.apple-client .apple-spotify-selected .login-auth-body,body.apple-client .apple-spotify-selected #qq-cookie-toggle-btn{display:none!important}body.apple-client #search-mode-tabs{overflow-x:auto;max-width:100%;overscroll-behavior-x:contain}body.apple-client #search-mode-tabs button{flex-shrink:0}';
+  style.textContent = 'body.apple-client #apple-spotify-setup{display:grid;gap:12px}body.apple-client #apple-spotify-setup input{box-sizing:border-box;width:100%;min-height:44px;padding:10px;border:1px solid #ffffff40;border-radius:10px;background:#ffffff10;color:inherit;font-size:16px}body.apple-client #apple-spotify-setup button{min-height:44px}body.apple-client #apple-spotify-setup code{overflow-wrap:anywhere;user-select:text}body.apple-client #apple-spotify-setup a{color:#1ed760;min-height:44px} body.apple-client #login-provider-spotify{color:#1ed760;min-height:52px}body.apple-client #apple-spotify-info{display:none;padding:12px 0;font-size:13px;line-height:1.7;color:rgba(255,255,255,.65)}body.apple-client .apple-spotify-selected #apple-spotify-info{display:block}body.apple-client .apple-spotify-selected > .login-auth-copy{display:block}body.apple-client .apple-spotify-selected > .login-auth-actions{display:flex;flex-wrap:wrap}body.apple-client .apple-spotify-selected .login-auth-body,body.apple-client .apple-spotify-selected #qq-cookie-toggle-btn{display:none!important}body.apple-client #search-mode-tabs{overflow-x:auto;max-width:100%;overscroll-behavior-x:contain}body.apple-client #search-mode-tabs button{flex-shrink:0}';
   document.head.appendChild(style);
   // Desktop's developer setup wizard/loopback check is not an end-user login
   // flow on iOS. The application registration is supplied by the team at build.
@@ -38,7 +66,7 @@
   spotifyLoginStatusText = function (info) {
     info = info || spotifyLoginStatus;
     if (info.loggedIn) return 'Spotify 已连接 · ' + (info.nickname || '账号') + ' · 播放采用匹配源';
-    return info.oauthConfigured ? '点击“连接 Spotify”，在系统授权窗口登录。' : '团队尚未配置 Spotify 授权应用；无需用户自行注册。';
+    return info.oauthConfigured ? '点击“连接 Spotify”，在系统授权窗口登录。' : '请填写自己的 Spotify Client ID，保存后即可打开官方授权。';
   };
   var originalUI = updateLoginProviderUi;
   updateLoginProviderUi = function () {
@@ -48,7 +76,7 @@
     if (!selected) return result;
     var title = document.getElementById('login-modal-title'), desc = document.getElementById('login-modal-desc'), status = document.getElementById('qr-status'), refresh = document.getElementById('refresh-qr-btn');
     if (title) title.textContent = '连接 Spotify';
-    if (desc) desc.textContent = '使用 Spotify 官方授权，无需填写 Client ID 或密码到 Mineradio。';
+    if (desc) desc.textContent = '填写自己的 Client ID 后使用 Spotify 官方页面登录；账号密码只在 Spotify 输入。';
     if (status) status.textContent = spotifyLoginStatusText();
     if (refresh) { refresh.textContent = spotifyOAuthBusy ? '等待 Spotify 授权…' : '连接 Spotify'; refresh.disabled = spotifyOAuthBusy || !spotifyLoginStatus.oauthConfigured; refresh.onclick = openSpotifyWebLogin; }
     return result;
@@ -116,6 +144,7 @@
     if (pending && !await pending) showToast('Spotify 退出未完成，请在账号面板重试');
     renderUserBtn();
   };
+  apiJson('/api/spotify/config').then(function(c){if(c && c.clientId)input.value=c.clientId;}).catch(function(){});
   refreshSpotifyLoginStatus().then(function () { if (loginProvider === 'spotify') updateLoginProviderUi(); }).catch(function () {});
   startSpotifyLoginStatusAutoRefresh();
 })();

@@ -5,12 +5,16 @@ import Foundation
 protocol QishuiCatalogRequesting: Actor {
     func request(_ url: URL, headers: [String: String]) async throws -> [String: Any]
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any]
+    /// PlayerInfo（VOD GetPlayInfo 签名地址）专用：按媒体域名白名单校验，不走 allowedAPI。
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any]
 }
 extension QishuiCatalogRequesting {
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] { throw QishuiCatalogFailure.invalidRequest }
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] { throw QishuiCatalogFailure.invalidRequest }
 }
 
 actor QishuiCatalogAPI {
+    private let supportsEncryptedPlayback: Bool
     private let transport: any QishuiCatalogRequesting
     private var cookies: [String: String] = [:]
     private var generation = 0
@@ -24,7 +28,7 @@ actor QishuiCatalogAPI {
     private var playlistReadInFlight = Set<String>()
     private let deviceID = String(UInt64.random(in: 1_000_000_000_000_000...8_999_999_999_999_999))
 
-    init(transport: any QishuiCatalogRequesting = QishuiCatalogTransport()) { self.transport = transport }
+    init(transport: any QishuiCatalogRequesting = QishuiCatalogTransport(), supportsEncryptedPlayback: Bool = false) { self.transport = transport; self.supportsEncryptedPlayback = supportsEncryptedPlayback }
     func setSession(_ values: [String: String]) {
         let names = Set(["sessionid", "sessionid_ss", "sid_guard", "sid_tt", "uid_tt", "uid_tt_ss", "odin_tt", "ttwid", "passport_csrf_token", "passport_csrf_token_default"])
         let filtered = values.filter { names.contains($0.key) && $0.value.utf8.count <= 8192 && !$0.value.contains("\r") && !$0.value.contains("\n") && !$0.value.contains(";") }
@@ -118,14 +122,53 @@ actor QishuiCatalogAPI {
         case "/api/qishui/song/url":
             let id = try checkedID(q("id")), status = await validateAccount()
             guard status["loggedIn"] as? Bool == true else { return status.merging(["playable": false, "reason": "login_required"]) { _, b in b } }
+            // 返回给前端的结果都带上已验证的账号与会员信息，避免已登录时仍提示「当前未登录」。
+            func account(_ result: [String: Any]) -> [String: Any] {
+                var out = result
+                out["loggedIn"] = true
+                for key in ["vipLevel", "isVip", "isSvip", "vipType", "vipLabel", "membershipKnown"] { if out[key] == nil, let v = status[key] { out[key] = v } }
+                return out
+            }
+            var preview: [String: Any]?
+            var sourceFailure: [String: Any]?
+            func fullPlayback(_ result: [String: Any]) -> [String: Any]? {
+                guard result["playable"] as? Bool == true else { return nil }
+                if result["trial"] as? Bool != true { return account(result) }
+                if preview == nil || (result["duration"] as? Double ?? 0) > (preview?["duration"] as? Double ?? 0) { preview = account(result) }
+                return nil
+            }
+            // Match the team Mac client's authenticated PC POST contract before GET/Web fallbacks.
+            if let payload = try? await pc("/luna/pc/track_v2", payload: ["track_id": id, "media_type": "track", "queue_type": "favorite_track_playlist", "scene_name": "library"]) {
+                let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
+                if let full = fullPlayback(result) { return full }
+            }
+            // 1) 桌面 PC 接口（GET，与原 Windows 契约一致）
             do {
                 let payload = try await pc("/luna/pc/track_v2", ["track_id": id, "media_type": "track"])
                 let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
-                if result["playable"] as? Bool == true { return result }
+                if let full = fullPlayback(result) { return full }
             } catch QishuiCatalogFailure.sessionExpired { return QishuiCatalogContract.disconnected(expired: true).merging(["playable": false]) { _, b in b } }
-            catch { /* Native PC signing is unavailable on iOS. A public audition remains explicit. */ }
-            do { return QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id) }
-            catch { return QishuiCatalogContract.playbackUnavailable() }
+            catch {}
+            // 2) Web 会话的 POST 形式（安卓 fetchQishuiPcTrackV2Post 的做法：device_platform=web）
+            if let payload = try? await webTrackV2(id) {
+                let result = QishuiCatalogContract.playback(payload, membership: status, publicSource: false, expectedID: id)
+                if let full = fullPlayback(result) { return full }
+            }
+            // 3) PC/Web 无完整音源时，尝试 SEO/PlayerInfo，保留平台返回的真实时长。
+            if let seo = try? await seoPlayback(id, membership: status) {
+                var out = account(seo)
+                if out["trial"] as? Bool == true {
+                    out["source"] = "qishui-public-seo-track"
+                    out["message"] = "当前接口返回试听片段，尚未取得这首歌的完整播放源。"
+                }
+                if let full = fullPlayback(out) { return full }
+                if out["playable"] as? Bool != true { sourceFailure = out }
+            }
+            do {
+                let result = QishuiCatalogContract.playback(try await publicTrack(id), membership: status, publicSource: true, expectedID: id)
+                if let full = fullPlayback(result) { return full }
+                return preview ?? sourceFailure ?? account(result)
+            } catch { return preview ?? sourceFailure ?? account(QishuiCatalogContract.playbackUnavailable()) }
         default: return QishuiCatalogContract.unsupported()
         }
     }
@@ -159,7 +202,7 @@ actor QishuiCatalogAPI {
         headers["Cookie"] = cookies.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
         let json: [String: Any]
         if let payload {
-            guard hasSession, QishuiCatalogContract.writePaths.contains(path) else { throw QishuiCatalogFailure.invalidRequest }
+            guard hasSession, (QishuiCatalogContract.writePaths.contains(path) || path == "/luna/pc/track_v2") else { throw QishuiCatalogFailure.invalidRequest }
             headers["Content-Type"] = "application/json"; headers["Referer"] = "https://www.qishui.com/"
             let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys, .withoutEscapingSlashes])
             json = try await transport.post(url, headers: headers, body: body)
@@ -264,6 +307,123 @@ actor QishuiCatalogAPI {
         try QishuiCatalogContract.check(json)
         return json
     }
+
+    /// 平行参考安卓 fetchQishuiPcTrackV2Post：Web 会话 + device_platform=web 的 POST 请求。
+    private func webTrackV2(_ id: String) async throws -> [String: Any] {
+        guard hasSession else { throw QishuiCatalogFailure.invalidRequest }
+        var components = URLComponents(string: "https://api.qishui.com/luna/pc/track_v2")!
+        components.queryItems = [URLQueryItem(name: "aid", value: "386088"), URLQueryItem(name: "app_name", value: "luna_pc"),
+                                 URLQueryItem(name: "channel", value: "pc_web"), URLQueryItem(name: "device_platform", value: "web")]
+        let session = ["sessionid", "sessionid_ss", "sid_guard", "sid_tt", "uid_tt", "uid_tt_ss", "odin_tt", "ttwid"]
+        let cookie = cookies.filter { session.contains($0.key) }.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        let headers = ["Accept": "application/json,text/plain,*/*", "Content-Type": "application/json; charset=utf-8",
+                       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) SodaMusic/3.1.0 Chrome/136.0.7103.59 Electron/36.4.0-rs.22.release.main.1 TTElectron/36.4.0-rs.22.release.main.1 Safari/537.36",
+                       "Cookie": cookie, "Referer": "https://www.qishui.com/"]
+        let body = try JSONSerialization.data(withJSONObject: ["track_id": id, "media_type": "track", "queue_type": "favorite_track_playlist", "scene_name": "library"], options: [.sortedKeys])
+        let expected = generation
+        do {
+            let json = try await transport.post(components.url!, headers: headers, body: body)
+            guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
+            try QishuiCatalogContract.check(json)
+            return json
+        } catch {
+            guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
+            // Android retries the same Web identity with GET before falling back to SEO.
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "track_id", value: id), URLQueryItem(name: "media_type", value: "track")]
+            let json = try await transport.request(components.url!, headers: headers)
+            guard generation == expected else { throw QishuiCatalogFailure.sessionChanged }
+            try QishuiCatalogContract.check(json)
+            return json
+        }
+    }
+
+    /// 汽水整轨回退：seo_track → track_player.url_player_info → PlayerInfo → 可播 M4A。
+    /// 平行参考安卓 qishui-api.js: resolveQishuiSeoPlayback / fetchQishuiSeoTrack / fetchQishuiPlayerInfo。
+    /// 仅在已登录时调用；拿到的签名播放地址用于用户自身有权限的内容，不绕过会员/付费。
+    private func seoPlayback(_ id: String, membership: [String: Any]) async throws -> [String: Any] {
+        let seo = try await publicTrack(id)
+        NSLog("[QISHUI-DIAG] seo_track 顶层 keys = %@", seo.keys.sorted().joined(separator: ","))
+        // seo_track 返回里定位 track_player（可能在 data / 顶层 / track 下）。
+        let root = QishuiCatalogContract.data(seo)
+        NSLog("[QISHUI-DIAG] seo root keys = %@", root.keys.sorted().joined(separator: ","))
+        let seoWrapper = QishuiCatalogContract.firstDictionary(root["seo_track"], seo["seo_track"])
+        let track = QishuiCatalogContract.firstDictionary(root["track"], seoWrapper["track"], seo["track"], seoWrapper)
+        NSLog("[QISHUI-DIAG] track keys = %@", track.keys.sorted().joined(separator: ","))
+        let player = QishuiCatalogContract.firstDictionary(root["track_player"], root["trackPlayer"],
+                                                           seo["track_player"], track["track_player"], track["trackPlayer"])
+        NSLog("[QISHUI-DIAG] player keys = %@", player.keys.sorted().joined(separator: ","))
+        let playerInfoURL = QishuiCatalogContract.text(player["url_player_info"] ?? player["URLPlayerInfo"] ?? player["urlPlayerInfo"])
+        NSLog("[QISHUI-DIAG] url_player_info host = %@ (empty=%@)", URL(string: playerInfoURL)?.host ?? "nil", playerInfoURL.isEmpty ? "YES" : "NO")
+        guard !playerInfoURL.isEmpty, let url = URL(string: playerInfoURL), url.scheme == "https" else {
+            NSLog("[QISHUI-DIAG] 失败：url_player_info 缺失或非 https")
+            throw QishuiCatalogFailure.invalidResponse
+        }
+        // url_player_info 是火山引擎 VOD GetPlayInfo 签名接口地址（非媒体 CDN），
+        // 用单独的 API 域名白名单校验，而不是 allowedMedia（后者只认 CDN 域名）。
+        if !QishuiCatalogContract.allowedPlayerInfo(url) {
+            NSLog("[QISHUI-DIAG] 失败：host 不在 PlayerInfo 白名单 -> %@", url.host ?? "nil")
+            throw QishuiCatalogFailure.invalidResponse
+        }
+        let stream = try await playerInfo(url, expectedID: id, membership: membership, seoTrack: track)
+        return stream
+    }
+
+    /// 请求 url_player_info（VOD GetPlayInfo 签名地址），解析 Result.Data.PlayInfoList 选可播流。
+    private func playerInfo(_ url: URL, expectedID: String, membership: [String: Any], seoTrack: [String: Any]) async throws -> [String: Any] {
+        var headers = ["Accept": "application/json,text/plain,*/*", "User-Agent": "Mineradio Apple", "Referer": "https://api.qishui.com/"]
+        if !cookies.isEmpty {
+            headers["Cookie"] = cookies.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+        }
+        let json = try await transport.requestMedia(url, headers: headers)
+        let result = QishuiCatalogContract.firstDictionary(json["Result"], json["result"])
+        let data = QishuiCatalogContract.firstDictionary(result["Data"], result["data"], json["Data"], json["data"])
+        let list = (data["PlayInfoList"] as? [[String: Any]]) ?? (data["playInfoList"] as? [[String: Any]])
+            ?? (data["play_info_list"] as? [[String: Any]]) ?? (json["PlayInfoList"] as? [[String: Any]]) ?? []
+        guard !list.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
+
+        let base = seoTrack["base_info"] as? [String: Any] ?? [:]
+        let full = [seoTrack["duration_ms"], seoTrack["duration"], base["duration_ms"], base["duration"]]
+            .map { QishuiCatalogContract.seconds($0) }.max() ?? 0
+        let membershipKnown = membership["membershipKnown"] as? Bool == true
+        let isVip = membership["isVip"] as? Bool == true
+        let isSvip = membership["isSvip"] as? Bool == true
+
+        // 在权限内优先完整时长，然后比较码率，避免短高码率片段覆盖长低码率音源。
+        let candidates = list.compactMap { QishuiStream(from: $0) }
+        guard !candidates.isEmpty else { throw QishuiCatalogFailure.invalidResponse }
+        // 只有已连接原生解码中继的调用者才接收带 auth 的加密候选。
+        let streams = candidates.filter { !$0.encrypted || (supportsEncryptedPlayback && !$0.auth.isEmpty) }.sorted {
+            if $0.duration != $1.duration { return $0.duration < $1.duration }
+            return $0.bitrate < $1.bitrate
+        }
+        guard !streams.isEmpty else { return QishuiCatalogContract.playbackUnavailable("unsupported_encryption") }
+
+        func allowed(_ tier: String) -> Bool {
+            switch tier {
+            case "svip": return membershipKnown && isSvip
+            case "vip": return membershipKnown && isVip
+            default: return true
+            }
+        }
+        // 会员状态已知：选权限内最优流；未知：参照安卓，倾向返回未受限的最优完整流，避免 VIP 被误降级。
+        let playable = membershipKnown
+            ? streams.last(where: { allowed($0.requiredTier) })
+            : (streams.last(where: { $0.requiredTier == "free" }) ?? streams.last)
+        guard let best = playable else {
+            // 有流但权限不足：显式报 VIP/SVIP 边界，不泄露受限 URL。
+            let needSvip = streams.contains { $0.requiredTier == "svip" } && !streams.contains { $0.requiredTier != "svip" }
+            return QishuiCatalogContract.playbackUnavailable(needSvip ? "svip_required" : "vip_required")
+        }
+        // 免登录 seo_track 只给第三方试听片段（通常 30~60 秒）。整曲时长缺失时也按片段处理，
+        // 否则前端会以为完整歌曲的链接在 0:30 失效，反复「重新取链」。
+        let trial = best.duration > 0 && (full > 0 ? best.duration + 5 < full : best.duration <= 61)
+        return ["provider": "qishui", "source": "qishui-seo-player-info",
+                "url": best.url,
+                "playable": true, "trial": trial, "duration": best.duration, "fullDuration": full,
+                "trialDuration": trial ? best.duration : 0, "level": best.requiredTier == "free" ? "standard" : "higher",
+                "br": best.bitrate, "encrypted": best.encrypted, "nativePlaybackAuth": best.auth,
+                "message": trial ? "此音源为平台返回的试听片段。" : ""]
+    }
     private func library() async throws -> [String: Any] {
         let status = await validateAccount()
         guard status["loggedIn"] as? Bool == true, let userID = status["userId"] as? String else { return status.merging(["playlists": []]) { _, b in b } }
@@ -339,6 +499,43 @@ actor QishuiCatalogAPI {
     }
 }
 
+/// PlayerInfo 返回的单条可播流。字段映射平行参考安卓 qishui-api.js qishuiStreamFromObject。
+struct QishuiStream {
+    let url: String
+    let auth: String
+    let encrypted: Bool
+    let bitrate: Double
+    let duration: Double
+    let quality: String
+    let format: String
+    let requiredTier: String
+
+    init?(from node: [String: Any]) {
+        func str(_ keys: [String]) -> String { keys.map { QishuiCatalogContract.text(node[$0]) }.first { !$0.isEmpty } ?? "" }
+        func num(_ keys: [String]) -> Double { keys.map { Double(QishuiCatalogContract.text(node[$0])) ?? 0 }.first { $0 > 0 } ?? 0 }
+        let link = str(["url", "Url", "URL", "main_url", "MainUrl", "play_url", "PlayUrl", "main_play_url", "MainPlayUrl"])
+        guard let mediaURL = URL(string: link), QishuiCatalogContract.allowedMedia(mediaURL),
+              !["jpg", "jpeg", "png", "webp", "gif"].contains(mediaURL.pathExtension.lowercased()) else { return nil }
+        url = link
+        auth = str(["play_auth", "PlayAuth", "spade_a", "SpadeA"])
+        encrypted = !auth.isEmpty || !QishuiCatalogContract.firstDictionary(node["encrypt_info"], node["EncryptInfo"]).isEmpty
+        let rawBitrate = num(["bitrate", "Bitrate", "real_bitrate", "RealBitrate", "br", "BR", "bit_rate", "BitRate"])
+        bitrate = rawBitrate
+        duration = QishuiCatalogContract.seconds(node["duration"] ?? node["Duration"])
+        let q = str(["quality", "Quality", "definition", "Definition", "quality_type", "QualityType"]).lowercased()
+        let f = str(["format", "Format", "vtype", "VType", "file_format", "FileFormat"]).lowercased()
+        quality = q
+        format = f
+        let kbps = rawBitrate > 1000 ? rawBitrate / 1000 : rawBitrate
+        let explicit = str(["requiredTier", "required_tier", "membershipTier", "membership_tier"]).lowercased()
+        let svip = explicit == "svip" || ["svip", "supervip", "hires", "highres", "master", "atmos", "dolby", "spatial"].contains { q.contains($0) }
+        let vip = explicit == "vip" || kbps > 192
+            || ["lossless", "flac", "sq", "highest", "excellent", "higher", "hq", "exhigh", "320"].contains { q.contains($0) }
+            || ["flac", "alac", "wav"].contains(f)
+        requiredTier = svip ? "svip" : (vip ? "vip" : "free")
+    }
+}
+
 enum QishuiCatalogFailure: Error, LocalizedError {
     case invalidRequest, invalidResponse, sessionExpired, identityMissing, sessionChanged, busy
     var errorDescription: String? {
@@ -367,8 +564,16 @@ actor QishuiCatalogTransport: QishuiCatalogRequesting {
         return try await send(request)
     }
     func post(_ url: URL, headers: [String: String], body: Data) async throws -> [String: Any] {
-        guard QishuiCatalogContract.allowedAPI(url), QishuiCatalogContract.writePaths.contains(url.path), body.count <= 65536 else { throw QishuiCatalogFailure.invalidRequest }
+        guard QishuiCatalogContract.allowedAPI(url), QishuiCatalogContract.writePaths.contains(url.path) || url.path == "/luna/pc/track_v2",
+              body.count <= 65536 else { throw QishuiCatalogFailure.invalidRequest }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.httpBody = body
+        headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        return try await send(request)
+    }
+    func requestMedia(_ url: URL, headers: [String: String]) async throws -> [String: Any] {
+        // PlayerInfo（VOD GetPlayInfo 签名地址）走 PlayerInfo API 域名白名单，不复用 allowedAPI 的 API 契约。
+        guard url.scheme == "https", QishuiCatalogContract.allowedPlayerInfo(url) else { throw QishuiCatalogFailure.invalidRequest }
+        var request = URLRequest(url: url); request.httpMethod = "GET"
         headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         return try await send(request)
     }

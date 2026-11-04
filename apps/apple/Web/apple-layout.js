@@ -166,7 +166,7 @@
       max-height: calc(var(--apple-visible-height, 100dvh) - var(--apple-safe-top) - var(--apple-safe-bottom) - 124px);
       overflow-y: auto; overscroll-behavior: contain; z-index: 1600;
     }
-    body.apple-client .apple-panel-close { display: block; position: sticky; top: 0; margin-left: auto; z-index: 2; min-width: 64px; min-height: 44px; color: inherit; background: #222; border: 1px solid #555; border-radius: 12px; }
+    body.apple-client .apple-panel-close { display: block; position: sticky; top: 0; margin-left: auto; z-index: 2; min-width: 56px; min-height: 36px; padding: 0 14px; }
     body.apple-client #fx-panel.peek, body.apple-client #playlist-panel.peek, body.apple-client #fx-panel.show, body.apple-client #playlist-panel.show { transform: none; }
     body.apple-client .modal-mask { box-sizing: border-box; padding: calc(var(--apple-safe-top) + 12px) calc(var(--apple-safe-right) + 12px) calc(var(--apple-safe-bottom) + 12px) calc(var(--apple-safe-left) + 12px); z-index: 2000; }
     body.apple-client .modal-mask > .modal {
@@ -215,7 +215,7 @@
     var panel = document.getElementById(entry[0]);
     if (!panel) return;
     var close = document.createElement('button');
-    close.type = 'button'; close.className = 'apple-panel-close'; close.textContent = '关闭';
+    close.type = 'button'; close.className = 'apple-panel-close fx-mini-btn ghost'; close.textContent = '关闭';
     close.setAttribute('aria-label', entry[0] === 'fx-panel' ? '关闭视觉控制台' : '关闭歌单面板');
     close.addEventListener('click', entry[1]); panel.prepend(close);
   });
@@ -236,6 +236,16 @@
       try { return originalFxToggle.apply(this, arguments); }
       finally { explicitFxToggle = false; }
     };
+    // 原版 #fx-fab 没有 click 处理，桌面靠悬停桥打开。触屏上悬停桥已被屏蔽，
+    // 因此这里补一个显式点按开关；鼠标/触控板仍走原版悬停逻辑。
+    var fxFab = document.getElementById('fx-fab');
+    if (fxFab) fxFab.addEventListener('click', function (event) {
+      if (hoverPointer.matches) return;
+      event.preventDefault(); event.stopPropagation();
+      var panel = document.getElementById('fx-panel');
+      var open = !!panel && (panel.classList.contains('show') || panel.classList.contains('peek'));
+      if (open) toggleFxPanel(false); else toggleFxPanel();
+    });
   }
   if (typeof isPlaylistEdgeTrigger === 'function') {
     var originalPlaylistEdgeTrigger = isPlaylistEdgeTrigger;
@@ -433,6 +443,8 @@
     handle.addEventListener('click', unfoldControls, true);
   }
   window.__mineradioAppleRevealControls = function () { if (phone.matches) unfoldControls(); };
+  // 原生控制条的“更多”会临时展开原版完整控制条（音质、音量、歌词校准等）。
+  window.__mineradioAppleUnfoldWebControls = unfoldControls;
   function updateViewport() {
     var height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     root.style.setProperty('--apple-visible-height', Math.round(height) + 'px');
