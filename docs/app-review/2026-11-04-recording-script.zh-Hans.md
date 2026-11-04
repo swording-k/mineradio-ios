@@ -50,3 +50,35 @@
 1. 构建 17 的评论入口是否实际开放需真机核实。若开放，补齐适用的 UGC 处理机制，或移除相关功能后新建构建；不能只写备注绕过。
 2. 开源代码许可证不是音乐平台 API 或曲库内容授权。苹果截图第 6 项需按实际提供证据，不写“因为用户有会员，所以我们有平台授权”。
 3. 录屏不需要重新构建；代码功能修复需要新构建。图标、引导和汽水后续修改不会自动进入已经上传的构建 17。
+
+## 审核备注草稿（方括号需按实际填完再提交）
+
+Submitted app version: 1.0. Submitted build: 0.4.6 (17).
+
+1. Physical-device demonstration
+Video: [publicly accessible recording URL]
+Device: [model], OS: [version]. The recording starts at the Home Screen and shows app launch, setup, third-party sign-in, playlist browsing, playback controls, visualization settings, orientation changes, and disconnection.
+
+2. Purpose and audience
+Mineradio is a visual music player for iPhone and iPad. It combines music playback with particle effects, lyrics, and album artwork for listeners who want a customizable visual listening experience.
+
+3. Setup and access
+If the entry passphrase is displayed, tap the profile entry and enter 世界和平 (copy exactly). This is an app entry passphrase, not a third-party music account or a subscription.
+[Describe the actual reviewer access method and provide the necessary authorized demo credentials/sample files through the appropriate private review fields. Do not include personal credentials in the video or a public link.]
+
+4. External services
+[Confirm all services actually exposed in build 17. Current source contains integrations for NetEase Cloud Music, QQ Music, Kugou Music, Qishui Music, Spotify and Bodian Music; source presence does not establish which ones are in this binary.]
+Music services supply their own authentication, catalogs, and playback entitlements. Spotify integration uses metadata/library access and available authorized source matching; do not describe this as Spotify audio streaming unless actually implemented and verified.
+[Confirm whether any payment, analytics, remote AI, or other external services are used by the submitted build.]
+
+5. Regions
+Music availability and sign-in depend on the music provider, region, account and subscription. [Specify the actual App Store distribution regions and any app-level regional restrictions.] Do not claim identical worldwide music availability without verification.
+
+6. Third-party material and applicable flows
+[Attach applicable platform/content authorization evidence, or accurately explain what is and is not authorized. Open-source code licensing does not by itself authorize a music catalog or use of a third-party service.]
+[Confirm whether build 17 offers account creation, comments/other user-generated content, and paid functionality. Where applicable, describe and demonstrate account deletion, reporting/blocking and paid-access flows.]
+
+Privacy policy: https://swording-k.github.io/mineradio-ios/privacy.html
+Support: https://swording-k.github.io/mineradio-ios/
+
+This draft is not ready to submit until the bracketed facts and access method have been completed.
