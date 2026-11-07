@@ -25,6 +25,10 @@ struct NativeControlBar: View {
         .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(.white.opacity(0.1)))
         .environment(\.colorScheme, .dark)
+        .onDisappear {
+            scrubbing = false
+            model.setInteracting(false)
+        }
     }
 
     /// 横屏：单行 64pt，不遮挡舞台；进度条在中间占剩余宽度。
@@ -121,11 +125,13 @@ struct NativeControlBar: View {
     }
 
     private var cover: some View {
-        AsyncImage(url: URL(string: state.cover)) { image in
-            image.resizable().scaledToFill()
-        } placeholder: {
-            Image(systemName: "music.note").foregroundStyle(.white.opacity(0.5))
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.08))
+        Group {
+            if let image = model.coverImage {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Image(systemName: "music.note").foregroundStyle(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.08))
+            }
         }
         .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .accessibilityHidden(true)
@@ -149,12 +155,14 @@ struct NativeControlBar: View {
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { drag in
                         guard duration > 0 else { return }
+                        if !scrubbing { model.setInteracting(true) }
                         scrubbing = true
                         scrubValue = min(max(drag.location.x / width, 0), 1) * duration
                     }
                     .onEnded { _ in
                         guard scrubbing else { return }
                         scrubbing = false
+                        model.setInteracting(false)
                         model.command("seek", scrubValue)
                     })
                 .animation(.easeOut(duration: 0.15), value: scrubbing)

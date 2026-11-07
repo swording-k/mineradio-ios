@@ -19,7 +19,10 @@ import UIKit
     var send: ((String, Any?) -> Void)?
 
     private var hideTask: Task<Void, Never>?
+    @Published private(set) var coverImage: UIImage?
     private var artworkURL = ""
+    private var artworkTask: Task<Void, Never>?
+    private var interacting = false
     private var artwork: MPMediaItemArtwork?
     private var commandsInstalled = false
 
@@ -62,12 +65,17 @@ import UIKit
         barVisible = true
         hideTask?.cancel()
         let immersive = state.immersive
-        guard immersive || (state.playing && state.autoHide) else { return }
+        guard !interacting, immersive || (state.playing && state.autoHide) else { return }
         hideTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: immersive ? 4_000_000_000 : 6_000_000_000)
             guard !Task.isCancelled, let self, self.state.immersive || (self.state.playing && self.state.autoHide) else { return }
             self.barVisible = false
         }
+    }
+
+    func setInteracting(_ active: Bool) {
+        interacting = active
+        reveal()
     }
 
     // MARK: 锁屏 / 控制中心
@@ -115,17 +123,21 @@ import UIKit
         return UIImage(named: name)
     }
     private func loadArtwork(_ link: String) {
-        artworkURL = link; artwork = nil
+        artworkTask?.cancel()
+        artworkURL = link; artwork = nil; coverImage = nil
         guard let url = URL(string: link), url.scheme == "https", AppleMediaPolicy.allowed(url) else { return }
-        Task { [weak self] in
-            // 复用封面缓存（带各平台需要的 Referer，避免防盗链导致灵动岛 / 锁屏没有封面）。
+        artworkTask = Task { [weak self] in
             guard let cached = await AppleCoverCache.shared.image(for: url, referer: AppleMediaPolicy.referer(url)),
-                  let image = UIImage(data: cached.data) else { return }
-            await MainActor.run {
-                guard let self, self.artworkURL == link else { return }
-                self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                self.updateSystemNowPlaying(trackChanged: false)
-            }
+                  !Task.isCancelled else { return }
+            // ImageIO creates a bounded thumbnail off the UI thread (512² is ~1 MiB RGBA).
+            let decoded = await Task.detached(priority: .utility) {
+                AppleArtwork.decode(cached.data, maxPixelSize: 512)
+            }.value
+            guard !Task.isCancelled, let decoded, let self, self.artworkURL == link else { return }
+            let image = UIImage(cgImage: decoded)
+            self.coverImage = image
+            self.artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            self.updateSystemNowPlaying(trackChanged: false)
         }
     }
 }

@@ -7,6 +7,7 @@ const src = names => names.map(name => `apps/apple/Sources/${name}.swift`);
 const providers = ['NeteaseContract','QQMusicNativeAPI','KugouContract','KugouTransport','KugouNativeAPI','QishuiCatalogContract','QishuiCatalogAPI','AppleMediaPolicy'];
 const netease = ['NeteaseEAPI','NeteaseContract','NeteaseTransport','NeteaseNativeAPI','NeteaseFeatureRoutes','NeteaseFeatureContract'];
 const suites = [
+  ['AppleArtworkTests', ['AppleArtwork']],
   ['QishuiAudioDecoderTests', ['QishuiAudioDecoder']],
   ['QishuiAudioStoreTests', ['QishuiCatalogContract','QishuiCatalogAPI','QishuiAudioStore']],
   ['BodianNativeTests', ['BodianContract','BodianNativeAPI']],
