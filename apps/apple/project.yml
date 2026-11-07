@@ -50,7 +50,7 @@ targets:
       properties:
         CFBundleDisplayName: Mineradio
         CFBundleShortVersionString: '1.0.1'
-        CFBundleVersion: '19'
+        CFBundleVersion: '20'
         MineradioSpotifyClientID: $(SPOTIFY_CLIENT_ID)
         CFBundleURLTypes:
           - CFBundleURLName: com.swordingk.mineradio.apple.spotify
@@ -74,6 +74,19 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoadsInWebContent: true
+  MineradioAppleUnitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - UnitTests
+    dependencies:
+      - target: MineradioApple
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.swordingk.mineradio.apple.preview.unittests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Mineradio.app/Mineradio"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   MineradioAppleUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -94,6 +107,7 @@ schemes:
         MineradioApple: all
     test:
       targets:
+        - MineradioAppleUnitTests
         - MineradioAppleUITests
     archive:
       config: Release

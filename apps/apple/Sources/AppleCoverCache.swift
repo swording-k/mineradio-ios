@@ -65,6 +65,12 @@ actor AppleCoverCache {
         if types.count > 2000 { types.removeAll(keepingCapacity: true) }
     }
 
+    /// System pressure should release compressed image bytes as well as WebGL textures.
+    func relieveMemoryPressure() {
+        memory.removeAllObjects()
+        types.removeAll(keepingCapacity: false)
+    }
+
     private var writesSinceTrim = 0
     private func trimDiskIfNeeded() {
         writesSinceTrim += 1

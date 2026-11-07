@@ -9,7 +9,7 @@
   if (!bridge) return;
   window.__mineradioAppleNativeControlsInstalled = true;
   var nativeBar = !!window.__mineradioAppleNativeControls;
-  var webBarRequested = false, lastPayload = '', barHeight = 96;
+  var webBarRequested = false, lastPayload = '', barHeight = 96, barVisible = true;
   var body = document.body;
 
   if (nativeBar && body) {
@@ -31,7 +31,7 @@
     // 行内 !important 优先级最高，避免与旧的网页控制条定位规则冲突。
     if (!fab) return;
     if (webBarRequested) fab.style.removeProperty('bottom');
-    else fab.style.setProperty('bottom', 'calc(' + barHeight + 'px + 16px)', 'important');
+    else fab.style.setProperty('bottom', 'calc(' + (barVisible ? barHeight : 0) + 'px + 16px)', 'important');
   }
 
   function currentSong() {
@@ -91,7 +91,7 @@
   var lastReserved = -1;
   function reserve(s) {
     // 原生控制条出现时，首页与面板底部给它留位；没歌或切到原版控制条时归零。
-    var value = nativeBar && s.hasSong && !s.webBar && !s.immersive && !s.panel ? barHeight : 0;
+    var value = nativeBar && barVisible && s.hasSong && !s.webBar && !s.immersive && !s.panel ? barHeight : 0;
     if (value === lastReserved) return;
     lastReserved = value;
     document.documentElement.style.setProperty('--apple-native-reserved', value + 'px');
@@ -133,6 +133,11 @@
         case 'immersive': if (typeof toggleImmersiveMode === 'function') toggleImmersiveMode(); break;
         case 'detail': if (typeof openTrackDetailModal === 'function') openTrackDetailModal('song'); break;
         case 'webBar': setWebBar(!!value); break;
+        case 'barVisible':
+          barVisible = !!value;
+          lastReserved = -1;
+          positionFab();
+          break;
         case 'barHeight':
           barHeight = Math.max(0, Math.min(400, Number(value) || 0));
           document.documentElement.style.setProperty('--apple-native-bar-height', barHeight + 'px');

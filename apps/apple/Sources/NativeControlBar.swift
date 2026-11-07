@@ -18,7 +18,16 @@ struct NativeControlBar: View {
 
     var body: some View {
         Group {
-            if wide { landscapeBar } else { portraitBar }
+            if wide {
+                GeometryReader { geometry in
+                    if geometry.size.width >= (isPad ? 850 : 700) {
+                        landscapeBar
+                    } else {
+                        compactLandscapeBar
+                    }
+                }
+                .frame(height: isPad ? 84 : 68)
+            } else { portraitBar }
         }
         .foregroundStyle(.white)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -60,6 +69,27 @@ struct NativeControlBar: View {
         .padding(.horizontal, isPad ? 18 : 12).padding(.vertical, isPad ? 10 : 6)
     }
 
+    /// Narrow landscape and iPad split windows keep playback accessible without
+    /// squeezing fixed-width controls outside the available safe area.
+    private var compactLandscapeBar: some View {
+        HStack(spacing: 10) {
+            cover
+            VStack(alignment: .leading, spacing: 2) {
+                Button { model.command("detail") } label: {
+                    Text(state.title.isEmpty ? "未在播放" : state.title)
+                        .font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(.plain)
+                progress
+            }
+            .frame(minWidth: 80)
+            playButton(size: 44)
+            control("forward.fill", "下一首", size: 17) { model.command("next") }
+            moreMenu
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+    }
+
     private func playButton(size: CGFloat) -> some View {
         Button { model.command("toggle") } label: {
             Image(systemName: state.playing ? "pause.fill" : "play.fill")
@@ -73,6 +103,9 @@ struct NativeControlBar: View {
 
     private var moreMenu: some View {
         Menu {
+            Button { model.command("prev") } label: { Label("上一首", systemImage: "backward.fill") }
+            Button { model.command("like") } label: { Label(state.liked ? "取消喜欢" : "红心喜欢", systemImage: state.liked ? "heart.fill" : "heart") }
+            Button { model.command("library") } label: { Label("歌单与播放队列", systemImage: "music.note.list") }
             Button { model.command("lyrics") } label: { Label("歌词", systemImage: "quote.bubble") }
             Button { model.command("mode") } label: { Label("切换播放顺序", systemImage: "repeat") }
             Button { model.command("immersive") } label: {

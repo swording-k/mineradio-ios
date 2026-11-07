@@ -63,3 +63,13 @@ test('iPad keeps the original control bar but still feeds the lock screen', () =
   assert(!f.body.classList.contains('apple-native-controls'));
   assert.equal(f.posts.at(-1).state.title, '晴天');
 });
+test('folding native controls returns the reserved stage space and lowers the visual controls button', () => {
+  const f = fixture(); const command = f.context.window.__mineradioAppleCommand;
+  command('barHeight', 150);
+  assert.equal(f.root.style.props['--apple-native-reserved'][0], '150px');
+  command('barVisible', false);
+  assert.equal(f.root.style.props['--apple-native-reserved'][0], '0px');
+  assert.equal(f.elements['fx-fab'].style.props.bottom[0], 'calc(0px + 16px)');
+  command('barVisible', true);
+  assert.equal(f.root.style.props['--apple-native-reserved'][0], '150px');
+});

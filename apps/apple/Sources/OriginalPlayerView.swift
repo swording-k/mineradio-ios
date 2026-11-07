@@ -127,6 +127,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         }
         /// 把系统内存警告转交给原版引擎：逐级降低内部渲染分辨率并深度裁剪缓存（apple-memory.js）。
         private func relieveMemoryPressure() {
+            Task { await AppleCoverCache.shared.relieveMemoryPressure() }
             webView?.evaluateJavaScript("window.__mineradioAppleMemoryPressure ? window.__mineradioAppleMemoryPressure('warning').level : -1") { [weak self] result, _ in
                 Task { @MainActor in
                     if let level = result as? Int, level >= 0 { self?.pressureLevel = max(self?.pressureLevel ?? 0, level) }

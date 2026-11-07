@@ -25,6 +25,9 @@ import UIKit
     private var interacting = false
     private var artwork: MPMediaItemArtwork?
     private var commandsInstalled = false
+    private let systemIntegration: Bool
+
+    init(systemIntegration: Bool = true) { self.systemIntegration = systemIntegration }
 
     /// 沉浸模式不再永久隐藏控制条：默认收起，点一下画面即出现（含「退出沉浸」），否则用户无法暂停或退出。
     var showsBar: Bool { state.hasSong && !state.splash && !state.modal && !state.webBar && !state.panel }
@@ -49,13 +52,23 @@ import UIKit
                              autoHide: raw["autoHide"] as? Bool ?? true, webBar: b("webBar"), panel: b("panel"))
             if next.duration > 0 { next.current = min(next.current, next.duration) }
             let started = next.playing && !state.playing
+            let paused = !next.playing && state.playing
+            let visibilityPolicyChanged = next.autoHide != state.autoHide
+            let wasCovered = state.modal || state.panel || state.webBar || state.splash
+            let isCovered = next.modal || next.panel || next.webBar || next.splash
+            let uncovered = wasCovered && !isCovered
             let trackChanged = next.title != state.title || next.cover != state.cover
             let immersionChanged = next.immersive != state.immersive
             state = next
             installRemoteCommands()
             updateSystemNowPlaying(trackChanged: trackChanged)
             if immersionChanged && next.immersive { barVisible = false; hideTask?.cancel() }
-            else if started || !next.playing || immersionChanged { reveal() }
+            else if started || paused || immersionChanged || visibilityPolicyChanged || uncovered || trackChanged { reveal() }
+            if !next.hasSong {
+                hideTask?.cancel(); artworkTask?.cancel()
+                artworkURL = ""; artwork = nil; coverImage = nil
+                interacting = false
+            }
         default: break
         }
     }
@@ -74,6 +87,7 @@ import UIKit
     }
 
     func setInteracting(_ active: Bool) {
+        guard interacting != active else { return }
         interacting = active
         reveal()
     }
@@ -81,7 +95,7 @@ import UIKit
     // MARK: 锁屏 / 控制中心
 
     private func installRemoteCommands() {
-        guard !commandsInstalled else { return }
+        guard systemIntegration, !commandsInstalled else { return }
         commandsInstalled = true
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in self?.send?("play", nil); return .success }
@@ -96,6 +110,7 @@ import UIKit
     }
 
     private func updateSystemNowPlaying(trackChanged: Bool) {
+        guard systemIntegration else { return }
         let center = MPNowPlayingInfoCenter.default()
         guard state.hasSong else { center.nowPlayingInfo = nil; return }
         var info: [String: Any] = [MPMediaItemPropertyTitle: state.title.isEmpty ? "Mineradio" : state.title,

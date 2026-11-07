@@ -91,12 +91,19 @@ struct PlayerHost: View {
         .onReceive(service.$origin) { origin in
             if let origin { endpoint = origin; failure = nil }
         }
+        .onChange(of: nowPlaying.barVisible) { _, _ in reportBarVisibility() }
+        .onChange(of: nowPlaying.showsBar) { _, _ in reportBarVisibility() }
         .animation(.easeInOut(duration: 0.22), value: nowPlaying.barVisible)
         .animation(.easeInOut(duration: 0.22), value: nowPlaying.showsBar)
     }
 
     /// 把原生控制条占用的高度（含底部安全区）告诉网页，让 DIY 按钮与面板避开它。
+    private func reportBarVisibility() {
+        nowPlaying.send?("barVisible", nowPlaying.barVisible && nowPlaying.showsBar && failure == nil)
+    }
+
     private func reportBarHeight(_ proxy: GeometryProxy) {
+        reportBarVisibility()
         let bottomInset = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom ?? 0
         nowPlaying.send?("barHeight", Double(proxy.size.height + bottomInset + 4))
     }
