@@ -1209,7 +1209,7 @@ async function playQueueAt(idx, opts) {
         song.playbackLevel = data.level || song.playbackLevel || '';
         if (!data.sourceMatch) song.playbackSource = data.source || data.provider || song.playbackSource || '';
         if (playbackProvider === 'netease' && !data.sourceMatch) clearNeteaseSourceMatchMetadata(song);
-        song.trial = !!(song.trial || data.trial);
+        applyResolvedTrialInfo(song, data);
         song.vipRequired = !!(
           song.vipRequired ||
           data.trial ||
@@ -1561,5 +1561,18 @@ async function playQueueAt(idx, opts) {
     showToast(setupFailText);
     if (typeof showSourceFallbackNotice === 'function') showSourceFallbackNotice('播放失败', setupFailText);
     return false;
+  }
+}
+
+function applyResolvedTrialInfo(song, data) {
+  // An explicit result describes this stream, even when catalog metadata
+  // or a previous attempt for the same track described a preview.
+  if (data.url && typeof data.trial === 'boolean') {
+    song.trial = data.trial;
+    var seconds = Number(data.trialDuration);
+    song.resolvedTrialSeconds = data.trial && Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  } else {
+    song.resolvedTrialSeconds = 0;
+    song.trial = !!(song.trial || data.trial);
   }
 }

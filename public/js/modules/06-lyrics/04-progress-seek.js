@@ -139,8 +139,11 @@ function playbackDurationFromSong(song) {
   return normalizePlaybackDurationSeconds(song.duration || song.durationMs || song.dt || 0);
 }
 function getPlaybackDurationSeconds() {
-  if (audio && isFinite(audio.duration) && audio.duration > 0) return audio.duration;
-  return playbackDurationFromSong(currentCoverSong());
+  var song = currentCoverSong();
+  var mediaDuration = audio && isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+  var preview = song && song.trial && Number(song.resolvedTrialSeconds);
+  if (preview > 0 && isFinite(preview)) return mediaDuration ? Math.min(preview, mediaDuration) : preview;
+  return mediaDuration || playbackDurationFromSong(song);
 }
 function getPlaybackCurrentSeconds() {
   return audio && isFinite(audio.currentTime) && audio.currentTime > 0 ? audio.currentTime : 0;

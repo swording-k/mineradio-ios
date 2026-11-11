@@ -78,3 +78,17 @@ test('scrolling DOM panels bounds 3D work without reducing canvas gestures or le
   const event=new Event('wheel');Object.defineProperty(event,'target',{value:{closest:()=>({})}});
   f.doc.dispatchEvent(event);assert.equal(f.context.getAdaptiveRenderFps(),0);
 });
+test('continuous resizing coalesces viewport work and preserves context recovery scheduling',()=>{
+  const frames=[], timers=new Map(), calls=[]; let serial=0;
+  const context={window:{addEventListener(){}},document:{addEventListener(){}},performance:{now:()=>0},
+    requestAnimationFrame:fn=>frames.push(fn),setTimeout:(fn)=>{timers.set(++serial,fn);return serial;},clearTimeout:id=>timers.delete(id),
+    refreshMainRendererViewport:r=>calls.push(r),
+    scheduleMainRendererViewportRefresh:r=>calls.push('original:'+r)};
+  vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-power.js','utf8'),context);
+  for(let i=0;i<100;i++) context.scheduleMainRendererViewportRefresh('resize');
+  assert.equal(frames.length,1); assert.equal(timers.size,1);
+  frames.shift()(); [...timers.values()][0]();
+  assert.deepEqual(calls,['resize','resize']);
+  context.scheduleMainRendererViewportRefresh('restore');
+  assert.equal(calls.at(-1),'original:restore');
+});

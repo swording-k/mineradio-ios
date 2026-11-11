@@ -5,28 +5,32 @@ const fs = require('node:fs');
 
 test('rotation preserves control identity and restores original parents and order on iPad', () => {
   function node() {
-    return {style: {setProperty() {}}, dataset: {}, setAttribute() {}, addEventListener() {},
-      appendChild(child) { child.parentNode = this; },
-      insertBefore(child, next) { child.parentNode = this; this.restoredNext = next; }};
+    return {children: [], style: {setProperty() {}}, dataset: {}, setAttribute() {}, addEventListener() {},
+      get nextSibling() { return this.parentNode?.children[this.parentNode.children.indexOf(this) + 1] || null; },
+      appendChild(child) { this.insertBefore(child, null); },
+      insertBefore(child, next) {
+        if (next && next.parentNode !== this) throw Error('NotFoundError');
+        if (child.parentNode) child.parentNode.children.splice(child.parentNode.children.indexOf(child), 1);
+        this.children.splice(next ? this.children.indexOf(next) : this.children.length, 0, child);
+        child.parentNode = this;
+      }};
   }
-  const quality = node(), mix = node(), qualityParent = node(), transport = node();
-  const modes = node(), actions = node(), nextQuality = node(), nextMix = node();
-  quality.parentNode = qualityParent; quality.nextSibling = nextQuality;
-  mix.parentNode = transport; mix.nextSibling = nextMix;
+  const quality = node(), mix = node(), heart = node(), original = node(), modes = node();
+  [quality, heart, mix].forEach(element => original.appendChild(element));
   const phone = {matches: true, addEventListener(_, callback) { this.rotate = callback; }};
-  const ids = {'quality-control': quality, 'cuefield-automix-btn': mix};
+  const ids = {'quality-control': quality, 'cuefield-automix-btn': mix, 'heart-btn': heart};
   const viewport = {content: 'width=device-width'};
   vm.runInNewContext(fs.readFileSync('apps/apple/Web/apple-layout.js', 'utf8'), {
-    document: {querySelector: selector => selector.startsWith('meta') ? viewport : selector.endsWith('.modes') ? modes : actions,
-      createElement: node, head: node(), getElementById: id => ids[id], documentElement: node()},
+    document: {querySelector: selector => selector.startsWith('meta') ? viewport : selector.endsWith('.modes') ? modes : null,
+      createComment: () => Object.assign(node(), {comment:true}), createElement: node, head: node(), getElementById: id => ids[id], documentElement: node()},
     window: {matchMedia: () => phone, innerHeight: 844, addEventListener() {}}
   });
-  assert.equal(quality.parentNode, modes); assert.equal(mix.parentNode, modes);
-  phone.matches = false; phone.rotate();
-  assert.equal(quality.parentNode, qualityParent); assert.equal(mix.parentNode, transport);
-  assert.equal(qualityParent.restoredNext, nextQuality); assert.equal(transport.restoredNext, nextMix);
-  phone.matches = true; phone.rotate();
-  assert.equal(quality.parentNode, modes); assert.equal(mix.parentNode, modes);
+  for (let cycle = 0; cycle < 3; cycle++) {
+    assert.equal(modes.children.length, 3);
+    phone.matches = false; phone.rotate();
+    assert.deepEqual(original.children.filter(n => !n.comment), [quality, heart, mix]);
+    phone.matches = true; phone.rotate();
+  }
   assert.match(viewport.content, /viewport-fit=cover/);
   assert.match(viewport.content, /user-scalable=no/);
   assert.match(viewport.content, /maximum-scale=1/);

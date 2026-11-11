@@ -253,14 +253,16 @@
       return hoverPointer.matches && originalPlaylistEdgeTrigger.apply(this, arguments);
     };
   }
-  var quality = document.getElementById('quality-control');
-  var qualityParent = quality && quality.parentNode;
-  var qualityNext = quality && quality.nextSibling;
   var modes = document.querySelector('#controls .modes');
-  var mix = document.getElementById('cuefield-automix-btn');
-  var mixParent = mix && mix.parentNode;
-  var mixNext = mix && mix.nextSibling;
-  var actions = document.querySelector('#controls .actions');
+  // Keep an exact slot even when adjacent controls move together. A saved
+  // nextSibling may itself have moved into the phone toolbar during a fold.
+  var relocated = ['quality-control','cuefield-automix-btn','heart-btn','collect-btn','play-mode-btn','mini-queue-btn'].map(function (id) {
+    var element = document.getElementById(id);
+    if (!element || !element.parentNode || !modes || element.parentNode === modes) return null;
+    var slot = document.createComment(id);
+    element.parentNode.insertBefore(slot, element);
+    return {element: element, slot: slot};
+  }).filter(Boolean);
   var phone = window.matchMedia('(max-width: 767px), (max-height: 500px) and (max-width: 1024px)');
   if (typeof updateControlsAutoHideFromPointer === 'function') {
     var desktopControlsPointer = updateControlsAutoHideFromPointer;
@@ -304,27 +306,13 @@
   }
 
   function arrangeQuality() {
-    if (quality && modes && qualityParent) {
-      if (phone.matches && quality.parentNode !== modes) modes.appendChild(quality);
-      else if (!phone.matches && quality.parentNode !== qualityParent) qualityParent.insertBefore(quality, qualityNext);
-    }
-    if (mix && actions && mixParent) {
-      if (phone.matches && mix.parentNode !== modes) modes.appendChild(mix);
-      else if (!phone.matches && mix.parentNode !== mixParent) mixParent.insertBefore(mix, mixNext);
-    }
-  }
-  var relocated = ['heart-btn','collect-btn','play-mode-btn','mini-queue-btn'].map(function (id) {
-    var element = document.getElementById(id);
-    return element && {element: element, parent: element.parentNode, next: element.nextSibling};
-  }).filter(Boolean);
-  var arrangeOriginal = arrangeQuality;
-  arrangeQuality = function () {
-    arrangeOriginal();
     relocated.forEach(function (item) {
-      if (phone.matches && modes && item.element.parentNode !== modes) modes.appendChild(item.element);
-      else if (!phone.matches && item.element.parentNode !== item.parent) item.parent.insertBefore(item.element, item.next && item.next.parentNode === item.parent ? item.next : null);
+      var parent = item.slot.parentNode;
+      if (phone.matches && item.element.parentNode !== modes) modes.appendChild(item.element);
+      else if (!phone.matches && parent && item.element.parentNode !== parent) parent.insertBefore(item.element, item.slot.nextSibling);
     });
-  };
+    syncBackdrop();
+  }
   arrangeQuality();
   phone.addEventListener('change', arrangeQuality);
   var root = document.documentElement;

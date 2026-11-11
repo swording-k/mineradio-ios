@@ -3,6 +3,21 @@
 (function installApplePowerPolicy() {
   if (window.__mineradioApplePower) return;
   var lastWorkAt = performance.now(), pending = 0, lastPanelScrollAt = -Infinity;
+  // During continuous window resizing the desktop scheduler queues three
+  // delayed refreshes per event. Sample the latest dimensions once per frame
+  // and once after settling; leave fullscreen/context recovery unchanged.
+  if (typeof scheduleMainRendererViewportRefresh === 'function' && typeof refreshMainRendererViewport === 'function') {
+    var originalSchedule = scheduleMainRendererViewportRefresh, framePending = false, settleTimer;
+    scheduleMainRendererViewportRefresh = function (reason) {
+      if (reason !== 'resize') return originalSchedule.apply(this, arguments);
+      if (!framePending) {
+        framePending = true;
+        requestAnimationFrame(function () { framePending = false; refreshMainRendererViewport('resize'); });
+      }
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(function () { refreshMainRendererViewport('resize'); }, 320);
+    };
+  }
   function scrollingPanel() { return performance.now() - lastPanelScrollAt < 180; }
   function wake() {
     lastWorkAt = performance.now();
