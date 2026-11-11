@@ -6,4 +6,5 @@
 - Tapping guide navigation no longer triggers the touch library's outside-panel dismissal handler.
 - 25 focused tests passed: guide safe viewport geometry, Apple layout interactions and native overlay suppression/restoration.
 - Added simulator-only GuideOverlayUITests for actual next/skip taps across rotation. Simulator startup is currently stalled; do not count this as a passed UI test.
+- Final unsigned Release device-target build succeeded; product Info.plist verified 1.0.1 (22).
 - Physical device verification and submission remain with the user.
