@@ -16,7 +16,7 @@
     body.classList.add('apple-native-controls');
     var style = document.createElement('style');
     style.textContent = [
-      'body.apple-native-controls:not(.apple-native-web-bar) #bottom-bar,',
+      'body.apple-native-controls:not(.apple-native-web-bar):not(.visual-guide-active) #bottom-bar,',
       'body.apple-native-controls:not(.apple-native-web-bar) #bottom-handle,',
       'body.apple-native-controls #thumb-wrap { display: none !important; }',
       'body.apple-native-controls #fx-panel, body.apple-native-controls #playlist-panel {',
@@ -81,7 +81,7 @@
       trial: !!(song && song.trial),
       immersive: typeof immersiveMode !== 'undefined' && !!immersiveMode,
       splash: !!(body && body.classList.contains('splash-active')),
-      modal: !!document.querySelector('.modal-mask.show,.modal.show,.login-easter-overlay.show'),
+      modal: !!(body && body.classList.contains('visual-guide-active')) || !!document.querySelector('.modal-mask.show,.modal.show,.login-easter-overlay.show'),
       autoHide: typeof controlsAutoHide === 'undefined' ? true : !!controlsAutoHide,
       webBar: webBarRequested,
       // 横屏打开歌单 / 视觉控制台时，原生控制条让出底部空间。

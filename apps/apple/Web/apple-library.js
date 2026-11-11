@@ -119,7 +119,7 @@
   document.addEventListener('pointerdown', function (e) {
     if (!touchOnly.matches || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return;
     var t = e.target;
-    if (!t || !t.closest || t.closest('#playlist-panel, #fx-panel, #apple-library-btn, #fx-fab, .modal-mask, #bottom-bar')) return;
+    if (!t || !t.closest || t.closest('#visual-guide, #playlist-panel, #fx-panel, #apple-library-btn, #fx-fab, .modal-mask, #bottom-bar')) return;
     var pl = document.getElementById('playlist-panel'), fx = document.getElementById('fx-panel');
     if (pl && (pl.classList.contains('show') || pl.classList.contains('peek')) && typeof togglePlaylistPanel === 'function') {
       if (typeof playlistPanelPinned !== 'undefined') playlistPanelPinned = false;

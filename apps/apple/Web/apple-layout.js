@@ -12,6 +12,19 @@
   var style = document.createElement('style');
   style.dataset.appleLayout = 'phone';
   style.textContent = `
+  /* Touch panels/header use 1100–1500; the original guide was only 620. */
+  body.apple-client #visual-guide { z-index: 2147483000; isolation: isolate; }
+  body.apple-client #visual-guide .visual-guide-scrim { z-index: 0; }
+  body.apple-client #visual-guide .visual-guide-ring { z-index: 1; }
+  body.apple-client #visual-guide .visual-guide-card { z-index: 2; }
+  body.apple-client #visual-guide .visual-guide-actions {
+    position: sticky; bottom: -15px; padding: 10px 0 2px;
+    background: rgba(12,12,16,.98);
+  }
+  body.apple-client #visual-guide .visual-guide-actions button { min-height: 44px; }
+  body.apple-client.visual-guide-active #bottom-bar {
+    display: block !important;
+  }
   .apple-panel-backdrop { display: none; }
   .apple-panel-close, #apple-controls-more, #apple-controls-collapse, #apple-library-btn { display: none; }
   body.apple-client #bottom-bar.apple-controls-collapsed {

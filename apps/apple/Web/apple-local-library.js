@@ -87,14 +87,6 @@
     };
     panel.appendChild(clear);
   }
-  var actions = document.getElementById('upload-actions');
-  if (actions) {
-    var entry = document.createElement('button');
-    entry.type = 'button'; entry.className = 'fx-mini-btn ghost';
-    entry.textContent = '本地音乐'; entry.style.cssText = 'min-height:44px;white-space:nowrap';
-    entry.onclick = function (event) { toggleUploadPanel(event); };
-    actions.appendChild(entry);
-  }
   var input = document.getElementById('file-input');
   if (input) input.multiple = true;
   // Original startup runs before this adapter; restore after installing host APIs.

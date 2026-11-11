@@ -79,7 +79,13 @@ enum AppleLayoutSmoke {
           document.getElementById('login-modal').classList.add('show');
           setLoginEasterEggMode(false); setLoginProvider('spotify',true); setLoginAuthDrawerOpen(true);
         };
-        document.body.append(button,status,zoom,visibility,spotify,foldState);
+        const guideTest=document.createElement('button'); guideTest.textContent='检查引导覆盖';
+        guideTest.style.cssText='position:fixed;top:90px;left:16px;z-index:2147483647;min-height:44px;background:white;color:black';
+        guideTest.onclick=()=>{
+          [button,status,zoom,visibility,spotify,foldState,guideTest].forEach(e=>e.remove());
+          startVisualGuide({manual:true});
+        };
+        document.body.append(button,status,zoom,visibility,spotify,foldState,guideTest);
         if (controlsAutoHide) holdBottomControlsVisible(4000);
         } catch (error) {
           const failed = document.createElement('p');

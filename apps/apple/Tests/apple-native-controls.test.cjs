@@ -73,3 +73,11 @@ test('folding native controls returns the reserved stage space and lowers the vi
   command('barVisible', true);
   assert.equal(f.root.style.props['--apple-native-reserved'][0], '150px');
 });
+
+test('visual guide suppresses native overlay and restores it after completion', () => {
+  const f = fixture();
+  f.body.classList.add('visual-guide-active'); f.tick();
+  assert.equal(f.posts.at(-1).state.modal, true);
+  f.body.classList.remove('visual-guide-active'); f.tick();
+  assert.equal(f.posts.at(-1).state.modal, false);
+});
