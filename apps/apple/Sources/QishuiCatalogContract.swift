@@ -149,6 +149,27 @@ enum QishuiCatalogContract {
             }
         }
         visit(raw, 0)
+        // 团队 Mac 客户端在结构化字段之外还会扫描官方返回文本中的会员标识；
+        // iOS 只遍历固定层级会漏掉 music_member 等新容器，导致 VIP 被误判为未知。
+        if !known, let blobData = try? JSONSerialization.data(withJSONObject: raw),
+           let blob = String(data: blobData, encoding: .utf8)?.lowercased(), !blob.isEmpty {
+            func scannedNumber(_ keys: [String]) -> Int {
+                for key in keys {
+                    guard let match = blob.range(of: "\"" + key + "\"\\s*:\\s*\"?([0-9]+)", options: .regularExpression) else { continue }
+                    let digits = blob[match].filter { $0.isNumber }
+                    if let value = Int(digits), value > 0 { return value }
+                }
+                return 0
+            }
+            let scannedSvip = scannedNumber(["svip_type", "sviptype", "super_vip_level", "superviplevel", "super_vip_type", "superviptype"]) > 0
+                || blob.contains("svip") || blob.contains("supervip") || blob.contains("超级会员") || blob.contains("超级vip")
+            let scannedVip = scannedSvip
+                || scannedNumber(["vip_type", "viptype", "member_type", "membertype", "vip_level", "viplevel", "member_level", "memberlevel"]) > 0
+                || blob.contains("\"is_vip\":true") || blob.contains("\"isvip\":true") || blob.contains("vip") || blob.contains("会员")
+            if scannedVip {
+                known = true; svip = scannedSvip; vip = true
+            }
+        }
         return ["membershipKnown": known, "isVip": vip, "isSvip": svip, "vipType": svip ? 2 : vip ? 1 : 0,
                 "vipLevel": !known ? "unknown" : svip ? "svip" : vip ? "vip" : "none",
                 "vipLabel": !known ? "会员权益待核验" : svip ? "SVIP" : vip ? "VIP" : "无VIP", "expiresAt": expiry]
