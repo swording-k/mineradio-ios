@@ -1112,12 +1112,15 @@ async function fetchMusicSearchResults(q, mode, previousPages) {
     songsByProvider[provider] = songs;
     if (value.message && !songs.length && !searchProviderNotice) searchProviderNotice = value.message;
   });
+  var extensionSongs = Object.keys(songsByProvider).filter(function (key) {
+    return ['netease', 'qq', 'kugou', 'qishui', 'spotify'].indexOf(key) < 0;
+  }).reduce(function (all, key) { return all.concat(songsByProvider[key] || []); }, []);
   var songs = mergeSongSearchResults(
     songsByProvider.netease,
     songsByProvider.qq,
     songsByProvider.kugou,
     songsByProvider.qishui,
-    songsByProvider.spotify,
+    songsByProvider.spotify.concat(extensionSongs),
     MUSIC_SEARCH_MAX_RESULTS,
     q
   );

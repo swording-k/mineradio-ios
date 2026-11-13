@@ -7,7 +7,6 @@ struct PlayerHost: View {
     @State private var failure: String?
     @State private var revision = UUID()
     @StateObject private var nowPlaying = NowPlayingModel()
-    @ObservedObject private var appleMusic = AppleMusicController.shared
     /// iPhone 与 iPad 统一使用原生控制条（同一套代码、同一种交互）。
     private let nativeBar = true
 
@@ -57,12 +56,8 @@ struct PlayerHost: View {
         .fullScreenCover(isPresented: Binding(get: { service.securityWebView != nil }, set: { if !$0 { service.cancelSecurity() } })) {
             QishuiSecuritySheet(web: service.securityWebView, cancel: { service.cancelSecurity() })
         }
-        .sheet(isPresented: $appleMusic.presented) { AppleMusicLibrarySheet(music: appleMusic) }
         .onAppear {
             service.start()
-            #if DEBUG && targetEnvironment(simulator)
-            if ProcessInfo.processInfo.arguments.contains("--apple-music-smoke") { appleMusic.presented = true }
-            #endif
             #if DEBUG && targetEnvironment(simulator)
             if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--apple-official-login-smoke"),
                ProcessInfo.processInfo.arguments.indices.contains(index + 1) {

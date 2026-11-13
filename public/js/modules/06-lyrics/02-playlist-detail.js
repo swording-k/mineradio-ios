@@ -564,6 +564,8 @@ function playlistPanelBuildVirtualEntries() {
     if (!groups[key]) groups[key] = [];
     groups[key].push({ pl: pl, sourceIndex: sourceIndex });
   });
+  // Native platform adapters can add providers without losing their playlists in this renderer.
+  Object.keys(groups).forEach(function (key) { if (order.indexOf(key) < 0) order.push(key); });
   var entries = [];
   order.forEach(function (key) {
     var items = (groups[key] || []).sort(function (a, b) {
@@ -571,7 +573,7 @@ function playlistPanelBuildVirtualEntries() {
       return priority || (a.sourceIndex - b.sourceIndex);
     });
     if (!items.length) return;
-    entries.push({ type: 'label', key: key, label: labels[key] || key, height: 31 });
+    entries.push({ type: 'label', key: key, label: labels[key] || playlistProviderName(key), height: 31 });
     items.forEach(function (entry) {
       entries.push({ type: 'card', pl: entry.pl, sourceIndex: entry.sourceIndex, height: 69 });
       var cardKey = playlistPanelKey(normalizePlaylistProvider(entry.pl.provider), entry.pl.id);

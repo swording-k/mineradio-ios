@@ -191,7 +191,7 @@ struct OriginalPlayerView: UIViewRepresentable {
             if message.name == "appleMusic", let input = message.body as? [String: Any],
                let action = input["action"] as? String {
                 Task { @MainActor in
-                    replyHandler(await AppleMusicController.shared.command(action, value: (input["value"] as? NSNumber)?.doubleValue), nil)
+                    replyHandler(await AppleMusicController.shared.request(input), nil)
                 }
                 return
             }

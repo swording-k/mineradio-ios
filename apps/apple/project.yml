@@ -50,7 +50,7 @@ targets:
       properties:
         CFBundleDisplayName: Mineradio
         CFBundleShortVersionString: '1.0.3'
-        CFBundleVersion: '24'
+        CFBundleVersion: '25'
         NSAppleMusicUsageDescription: 连接你的 Apple Music，浏览音乐资料库、歌单并播放你有权收听的歌曲。
         MineradioSpotifyClientID: $(SPOTIFY_CLIENT_ID)
         CFBundleURLTypes:

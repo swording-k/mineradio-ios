@@ -4,7 +4,6 @@ import MusicKit
 /// MusicKit owns protected playback and credentials. The web view receives metadata only.
 @MainActor final class AppleMusicController: ObservableObject {
     static let shared = AppleMusicController()
-    @Published var presented = false
     @Published private(set) var authorized = MusicAuthorization.currentStatus == .authorized
     @Published private(set) var busy = false
     @Published private(set) var message = "连接 Apple Music，访问音乐资料库和歌曲。完整曲库播放需要有效的 Apple Music 订阅。"
@@ -15,9 +14,10 @@ import MusicKit
     private let player = ApplicationMusicPlayer.shared
     private var pulse: Task<Void, Never>?
     private var requestGeneration = 0
-    private var songPage: MusicItemCollection<Song>?
-    private var trackPage: MusicItemCollection<Track>?
-    @Published private(set) var hasMore = false
+    private var songCache: [String: Song] = [:]
+    private var queuedSongs: [String: Song] = [:]
+    private var connectionFailed = false
+    private var detached = UserDefaults.standard.bool(forKey: "apple-music-disconnected")
     var prepare: (() async throws -> Void)?
     var publish: (([String: Any]) -> Void)?
 
@@ -25,6 +25,7 @@ import MusicKit
         guard !busy else { return }
         requestGeneration += 1; let generation = requestGeneration
         busy = true; defer { if generation == requestGeneration { busy = false } }
+        connectionFailed = false
         let permission = await MusicAuthorization.request()
         authorized = permission == .authorized
         guard authorized else { message = "未获音乐资料访问权限。请到系统设置中允许 Mineradio 访问媒体与 Apple Music。"; return }
@@ -36,72 +37,105 @@ import MusicKit
             var lists = MusicLibraryRequest<Playlist>(); lists.limit = 100
             let listResult = try await lists.response().items
             guard generation == requestGeneration else { return }
-            songPage = songResult; trackPage = nil; hasMore = songResult.hasNextBatch
             songs = Array(songResult); playlists = Array(listResult)
             message = canPlay ? "Apple Music 已连接" : "音乐资料已授权；当前账户无法播放 Apple Music 曲库，请检查订阅。"
-        } catch { fail(error) }
+        } catch { connectionFailed = true; fail(error) }
     }
-    func search(_ term: String) async {
-        requestGeneration += 1; let generation = requestGeneration
-        guard authorized, !term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        busy = true; defer { if generation == requestGeneration { busy = false } }
-        do {
-            var request = MusicCatalogSearchRequest(term: String(term.prefix(200)), types: [Song.self]); request.limit = 25
-            let result = try await request.response()
-            guard generation == requestGeneration else { return }
-            songPage = result.songs; trackPage = nil; hasMore = result.songs.hasNextBatch
-            songs = Array(result.songs); message = songs.isEmpty ? "没有找到歌曲" : "Apple Music 搜索结果"
-        } catch { if generation == requestGeneration { fail(error) } }
-    }
-    func open(_ playlist: Playlist) async {
-        guard !busy else { return }; busy = true; defer { busy = false }
-        requestGeneration += 1; let generation = requestGeneration
-        do {
-            let detail = try await playlist.with(.tracks)
-            guard generation == requestGeneration else { return }
-            trackPage = detail.tracks; songPage = nil; hasMore = detail.tracks?.hasNextBatch ?? false
-            songs = detail.tracks?.compactMap { track in if case .song(let song) = track { return song }; return nil } ?? []
-            message = songs.isEmpty ? "歌单暂无可用歌曲" : playlist.name
-        } catch { fail(error) }
-    }
-    func loadMore() async {
-        guard !busy, hasMore else { return }
-        busy = true; defer { busy = false }
-        let generation = requestGeneration
-        do {
-            if let page = songPage {
-                let next = try await page.nextBatch(limit: 100)
-                guard generation == requestGeneration else { return }
-                songPage = next; hasMore = next?.hasNextBatch ?? false
-                if let next { let ids = Set(songs.map(\.id)); songs += next.filter { !ids.contains($0.id) } }
-            } else if let page = trackPage {
-                let next = try await page.nextBatch(limit: 100)
-                guard generation == requestGeneration else { return }
-                trackPage = next; hasMore = next?.hasNextBatch ?? false
-                if let next {
-                    let ids = Set(songs.map(\.id))
-                    songs += next.compactMap { if case .song(let song) = $0, !ids.contains(song.id) { return song }; return nil }
-                }
-            }
-        } catch { fail(error) }
-    }
-    func play(_ song: Song) async {
-        guard !busy else { return }; busy = true; defer { busy = false }
+    func play(_ song: Song, queue: [Song]? = nil) async -> Bool {
+        guard !busy else { return false }; busy = true; defer { busy = false }
         do {
             canPlay = try await MusicSubscription.current.canPlayCatalogContent
-            guard authorized, canPlay else { message = "请先授权并确认 Apple Music 订阅有效。"; return }
-            guard let prepare else { message = "播放舞台尚未就绪，请稍后重试。"; return }
+            guard authorized, canPlay else { message = "请先授权并确认 Apple Music 订阅有效。"; return false }
+            guard let prepare else { message = "播放舞台尚未就绪，请稍后重试。"; return false }
             try await prepare()
-            player.queue = ApplicationMusicPlayer.Queue(for: songs, startingAt: song)
+            remember(queue ?? songs)
+            let items = queue ?? songs
+            let nativeQueue = ApplicationMusicPlayer.Queue(for: items, startingAt: song)
+            queuedSongs = Dictionary(uniqueKeysWithValues: zip(nativeQueue.entries.map(\.id), items))
+            player.queue = nativeQueue
             try await player.play()
-            active = true; presented = false; message = "Apple Music 正在播放"
-            emit(); startPulse()
-        } catch { fail(error) }
+            active = true; message = "Apple Music 正在播放"
+            emit(); startPulse(); return true
+        } catch { fail(error); return false }
+    }
+    private func mapped(_ song: Song) -> [String: Any] {
+        let remembered = songCache[song.id.rawValue]
+        let artwork = song.artwork ?? remembered?.artwork
+        return ["id": song.id.rawValue, "providerSongId": song.id.rawValue, "provider": "applemusic", "source": "applemusic", "type": "applemusic",
+                "name": song.title, "artist": song.artistName, "album": song.albumTitle ?? remembered?.albumTitle ?? "",
+                "duration": song.duration ?? remembered?.duration ?? 0,
+                "cover": artwork?.url(width: 800, height: 800)?.absoluteString ?? ""]
+    }
+    private func remember(_ values: [Song]) { for song in values { songCache[song.id.rawValue] = song } }
+    private func status() -> [String: Any] {
+        ["provider": "applemusic", "loggedIn": MusicAuthorization.currentStatus == .authorized && !detached,
+         "nickname": "Apple Music", "userId": "apple-music-device", "canPlay": canPlay, "message": message]
+    }
+    func request(_ input: [String: Any]) async -> [String: Any] {
+        let action = input["action"] as? String ?? ""
+        if action == "status" { return status() }
+        if action == "authorize" {
+            detached = false; UserDefaults.standard.set(false, forKey: "apple-music-disconnected")
+            await connect(); if connectionFailed { return ["ok": false, "message": message] }; return status()
+        }
+        if action == "logout" {
+            _ = await command("stop"); detached = true; UserDefaults.standard.set(true, forKey: "apple-music-disconnected")
+            songCache.removeAll(); return ["ok": true, "loggedIn": false]
+        }
+        if ["library", "tracks", "search", "playID"].contains(action) {
+            guard MusicAuthorization.currentStatus == .authorized && !detached else { return ["ok": false, "message": "请先连接 Apple Music。"] }
+            do {
+                if action == "library" {
+                    if playlists.isEmpty && songs.isEmpty { await connect() }
+                    guard !connectionFailed else { return ["ok": false, "message": message] }
+                    remember(songs)
+                    let liked: [String: Any] = ["id": "applemusic-library", "provider": "applemusic", "name": "Apple Music 资料库", "virtual": true, "trackCount": songs.count, "cover": songs.first.map { mapped($0)["cover"] ?? "" } ?? "", "shelfPane": "mine"]
+                    let rows: [[String: Any]] = playlists.map { ["id": $0.id.rawValue, "provider": "applemusic", "source": "applemusic", "name": $0.name, "cover": $0.artwork?.url(width: 400, height: 400)?.absoluteString ?? "", "trackCount": $0.tracks?.count ?? 0, "shelfPane": "mine"] }
+                    return ["ok": true, "playlists": [liked] + rows, "canPlay": canPlay]
+                }
+                let offset = min(5000, max(0, input["offset"] as? Int ?? 0)), limit = min(100, max(1, input["limit"] as? Int ?? 50))
+                if action == "search" {
+                    var query = MusicCatalogSearchRequest(term: String((input["query"] as? String ?? "").prefix(200)), types: [Song.self]); query.limit = limit
+                    let result = try await query.response(); var page = result.songs
+                    var values = Array(page)
+                    while values.count < offset + limit, page.hasNextBatch, let next = try await page.nextBatch(limit: 100) { page = next; values += next }
+                    remember(values)
+                    return ["ok": true, "songs": Array(values.dropFirst(offset).prefix(limit)).map(mapped), "hasMore": page.hasNextBatch || values.count > offset + limit]
+                }
+                let id = input["id"] as? String ?? ""
+                if action == "tracks" {
+                    var values: [Song] = []; var more = false; var consumed = 0
+                    if id == "applemusic-library" {
+                        var req = MusicLibraryRequest<Song>(); req.limit = limit; req.offset = offset
+                        let page = try await req.response().items; values = Array(page); consumed = values.count; more = page.hasNextBatch
+                    } else {
+                        guard let list = playlists.first(where: { $0.id.rawValue == id }) else { return ["ok": false, "message": "歌单尚未载入，请刷新 Apple Music 歌单。"] }
+                        let loaded = try await list.with(.tracks)
+                        if var page = loaded.tracks {
+                            var tracks = Array(page)
+                            while tracks.count < offset + limit, page.hasNextBatch, let next = try await page.nextBatch(limit: 100) { page = next; tracks += next }
+                            let slice = tracks.dropFirst(offset).prefix(limit); consumed = slice.count
+                            values = slice.compactMap { if case .song(let song) = $0 { return song }; return nil }
+                            more = page.hasNextBatch || tracks.count > offset + limit
+                        }
+                    }
+                    remember(values)
+                    return ["ok": true, "tracks": values.map(mapped), "offset": offset, "nextOffset": offset + consumed, "hasMore": more, "total": offset + consumed + (more ? 1 : 0)]
+                }
+                if action == "playID" {
+                    guard let selected = songCache[id] else { return ["ok": false, "message": "歌曲尚未载入，请从 Apple Music 歌单或搜索中重新选择。"] }
+                    let ids = input["ids"] as? [String] ?? [id]
+                    let queue = ids.prefix(500).compactMap { songCache[$0] }
+                    let started = await play(selected, queue: queue.isEmpty ? [selected] : queue)
+                    return ["ok": started, "message": message]
+                }
+            } catch { fail(error); return ["ok": false, "message": message] }
+        }
+        return await command(action, value: (input["value"] as? NSNumber)?.doubleValue)
     }
     func command(_ action: String, value: Double? = nil) async -> [String: Any] {
         do {
             switch action {
-            case "open": presented = true
             case "stop": player.pause(); active = false; pulse?.cancel(); emit()
             case "pause": player.pause()
             case "play": if active { try await player.play() }
@@ -114,15 +148,18 @@ import MusicKit
             emit(); return ["ok": true]
         } catch { fail(error); return ["ok": false, "message": message] }
     }
-    private var currentSong: Song? { if case .song(let song) = player.queue.currentEntry?.item { return song }; return nil }
-    private var duration: Double { currentSong?.duration ?? 0 }
+    private var currentSong: Song? {
+        guard let entry = player.queue.currentEntry else { return nil }
+        if let song = queuedSongs[entry.id] { return song }
+        if case .song(let song) = entry.item { return song }
+        return nil
+    }
+    private var duration: Double { currentSong.map { $0.duration ?? songCache[$0.id.rawValue]?.duration ?? 0 } ?? 0 }
     private func emit() {
         var state: [String: Any] = ["active": active, "playing": active && player.state.playbackStatus == .playing,
                                   "current": max(0, player.playbackTime), "duration": duration]
         if let song = currentSong {
-            state["song"] = ["id": song.id.rawValue, "provider": "applemusic", "source": "applemusic", "type": "applemusic",
-                             "name": song.title, "artist": song.artistName, "album": song.albumTitle ?? "", "duration": duration,
-                             "cover": song.artwork?.url(width: 800, height: 800)?.absoluteString ?? ""]
+            state["song"] = mapped(song)
         }
         publish?(state)
     }
@@ -138,55 +175,5 @@ import MusicKit
     }
     private func fail(_ error: Error) {
         message = "Apple Music 请求未完成：" + error.localizedDescription + "。请检查系统音乐账户、网络及 App 的 MusicKit 服务配置。"
-    }
-}
-
-struct AppleMusicLibrarySheet: View {
-    @ObservedObject var music: AppleMusicController
-    @State private var query = ""
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Text("由 Apple Music 提供音乐播放。当前接入支持封面舞台；不提供逐字歌词或音频频谱分析。").font(.caption).foregroundStyle(.secondary)
-                    Text(music.message).font(.subheadline).foregroundStyle(.secondary)
-                    if !music.authorized { Button("授权并连接 Apple Music") { Task { await music.connect() } } }
-                    else { Button("刷新我的音乐库") { Task { await music.connect() } } }
-                    if music.busy { ProgressView() }
-                }
-                if music.authorized {
-                    if !music.playlists.isEmpty {
-                        Section("我的歌单") {
-                            ForEach(music.playlists) { playlist in
-                                Button { Task { await music.open(playlist) } } label: {
-                                    Label(playlist.name, systemImage: "music.note.list")
-                                }.disabled(music.busy)
-                            }
-                        }
-                    }
-                    Section("歌曲") {
-                        ForEach(music.songs) { song in
-                            Button { Task { await music.play(song) } } label: {
-                                HStack(spacing: 12) {
-                                    if let artwork = song.artwork { ArtworkImage(artwork, width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 6)) }
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(song.title).foregroundStyle(.primary).lineLimit(2)
-                                        Text(song.artistName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                    }
-                                    Spacer(minLength: 0)
-                                    Image(systemName: "play.fill").foregroundStyle(.pink)
-                                }.padding(.vertical, 4).frame(minHeight: 48)
-                            }.disabled(music.busy || !music.canPlay)
-                        }
-                        if music.hasMore { Button("加载更多歌曲") { Task { await music.loadMore() } }.disabled(music.busy) }
-                    }
-                }
-            }
-            .navigationTitle("Apple Music")
-            .searchable(text: $query, prompt: "搜索 Apple Music 歌曲")
-            .onSubmit(of: .search) { Task { await music.search(query) } }
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { music.presented = false } } }
-            .task { if music.authorized { await music.connect() } }
-        }.preferredColorScheme(.dark).tint(.pink)
     }
 }

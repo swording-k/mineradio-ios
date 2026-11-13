@@ -3,7 +3,8 @@
   var bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.appleMusic;
   if (!bridge || window.__mineradioAppleMusicInstalled) return;
   window.__mineradioAppleMusicInstalled = true;
-  var state = {active: false}, key = '';
+  var state = {active: false}, key = '', receivedAt = 0;
+  function position(){var value=Number(state.current)||0;if(state.playing)value+=Math.min(1.5,Math.max(0,(Date.now()-receivedAt)/1000));return state.duration>0?Math.min(state.duration,value):value;}
   function command(action, value) {
     return bridge.postMessage({action: action, value: value}).then(function (r) {
       if (r && r.ok === false && typeof showToast === 'function') showToast(r.message);
@@ -13,7 +14,8 @@
   function call(name) { var fn = arguments[0]; if (typeof fn === 'function') { try { fn.apply(null, Array.prototype.slice.call(arguments, 1)); } catch (_) {} } }
   window.__mineradioAppleMusicPrepare = function () {
     if (typeof trackSwitchToken !== 'undefined') trackSwitchToken++;
-    if (typeof audio !== 'undefined' && audio) audio.pause();
+    if (typeof pauseCurrentAudioForTrackSwitch === 'function') pauseCurrentAudioForTrackSwitch();
+    else if (typeof audio !== 'undefined' && audio) audio.pause();
     playing = false;
     call(typeof closeLoginModal === 'function' && closeLoginModal);
     call(typeof closeUserModal === 'function' && closeUserModal);
@@ -24,21 +26,33 @@
   };
   window.__mineradioAppleMusicReceive = function (next) {
     var wasActive = state.active;
-    state = next || {active:false};
+    state = next || {active:false}; receivedAt = Date.now();
     if (!state.active) { if(wasActive)playing=false; return; }
+    var resumed=!!state.playing && !playing;
     playing = !!state.playing;
+    call(typeof setPlayIcon === 'function' && setPlayIcon, playing);
+    if(resumed)call(typeof markStageLyricsPlaybackResume === 'function' && markStageLyricsPlaybackResume, 'apple-music');
     if (!state.song) return;
     var song = state.song;
-    if (key !== song.id) {
-      key = song.id; trackSwitchToken++; playQueue = [song]; currentIdx = 0; firstPlayDone = true;
+    var visualKey=String(song.id)+'|'+String(song.cover||'');
+    if (key !== visualKey) {
+      key = visualKey; trackSwitchToken++;
+      var found=playQueue.findIndex(function(s){return s.provider==='applemusic' && String(s.id)===String(song.id);});
+      if(found>=0){currentIdx=found;playQueue[found]=Object.assign({},playQueue[found],song);}else{playQueue=[song];currentIdx=0;}
+      if(!firstPlayDone && typeof tweenParticleAlpha==='function' && typeof uniforms!=='undefined')tweenParticleAlpha(uniforms.uAlpha.value||0,1,220);
+      firstPlayDone = true;
       if (typeof homeForcedOpen !== 'undefined') homeForcedOpen = false;
       if (typeof homeSuppressed !== 'undefined') homeSuppressed = false;
+      call(typeof markRenderInteraction === 'function' && markRenderInteraction, 'apple-music-track', 1000);
+      call(typeof forcePlaybackControlsInteractive === 'function' && forcePlaybackControlsInteractive);
       call(typeof switchPlaybackVisualToEmily === 'function' && switchPlaybackVisualToEmily);
+      call(typeof dismissHomePage === 'function' && dismissHomePage);
       call(typeof updateEmptyHomeVisibility === 'function' && updateEmptyHomeVisibility);
       ['thumb-title','thumb-artist'].forEach(function (id,i) { var n=document.getElementById(id); if(n)n.textContent=i?song.artist:song.name; });
       call(typeof updateControlTrackInfo === 'function' && updateControlTrackInfo, song);
       call(typeof resetLyricsForTrackSwitch === 'function' && resetLyricsForTrackSwitch, song, trackSwitchToken);
       call(typeof loadCoverFromUrl === 'function' && loadCoverFromUrl, song.cover || '', {trackToken:trackSwitchToken});
+      call(typeof fetchLyric === 'function' && fetchLyric, song, trackSwitchToken);
       call(typeof hideLoading === 'function' && hideLoading);
       call(typeof renderQueuePanel === 'function' && renderQueuePanel);
     }
@@ -46,7 +60,12 @@
   };
   var queueAt = playQueueAt;
   playQueueAt = async function (idx) {
-    if (state.active && playQueue[idx] && playQueue[idx].provider === 'applemusic') { await command('seek', 0); return command('play'); }
+    var song=playQueue[idx];
+    if(song && song.provider==='applemusic') {
+      var result=await bridge.postMessage({action:'playID',id:String(song.id),ids:playQueue.filter(function(s){return s.provider==='applemusic';}).map(function(s){return String(s.id);})});
+      if(!result || !result.ok){if(typeof showToast==='function')showToast(result && result.message || 'Apple Music 播放未完成');return false;}
+      return true;
+    }
     if (state.active) { var r = await command('stop'); if (!r || !r.ok) return false; state={active:false};key=''; }
     return queueAt.apply(this, arguments);
   };
@@ -58,14 +77,11 @@
   if (typeof toggleLikeCurrent === 'function') {
     var like=toggleLikeCurrent; toggleLikeCurrent=function(){if(state.active){showToast('请在 Apple Music 中管理喜爱歌曲');return;}return like.apply(this,arguments);};
   }
+  if(typeof stageLyricPlaybackSeconds==='function') {
+    var lyricClock=stageLyricPlaybackSeconds;
+    stageLyricPlaybackSeconds=function(){return state.active?position():lyricClock.apply(this,arguments);};
+  }
   var time=getPlaybackCurrentSeconds, duration=getPlaybackDurationSeconds;
-  getPlaybackCurrentSeconds=function(){return state.active?Number(state.current)||0:time.apply(this,arguments);};
+  getPlaybackCurrentSeconds=function(){return state.active?position():time.apply(this,arguments);};
   getPlaybackDurationSeconds=function(){return state.active?Number(state.duration)||0:duration.apply(this,arguments);};
-  ['login-platform-tabs','user-platform-tabs','search-mode-tabs'].forEach(function(id){
-    var parent=id==='user-platform-tabs'?document.querySelector('#user-modal .user-platform-tabs'):document.getElementById(id);
-    if(!parent && id==='user-platform-tabs')return;
-    if(!parent)return;
-    var button=document.createElement('button');button.type='button';button.textContent='Apple Music';button.setAttribute('aria-label','打开 Apple Music 音乐库');
-    button.style.cssText='color:#fa586a;min-height:44px;flex-shrink:0';button.onclick=function(){command('open');};parent.appendChild(button);
-  });
 })();
