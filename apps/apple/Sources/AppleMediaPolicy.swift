@@ -8,6 +8,7 @@ enum AppleMediaPolicy {
         let host = url.host?.lowercased() ?? ""
         if ["img1.kuwo.cn", "img2.kuwo.cn", "img3.kuwo.cn", "img4.kuwo.cn", "ga-sycdn.kuwo.cn"].contains(host) { return true }
         if host == "i.scdn.co" && url.path.hasPrefix("/image/") { return true }
+        if url.scheme == "https", (host == "mzstatic.com" || host.hasSuffix(".mzstatic.com")), url.path.hasPrefix("/image/") { return true }
         return (host == "y.qq.com" && url.path.hasPrefix("/music/photo_new/")) ||
             ["imge.kugou.com", "imgessl.kugou.com"].contains(host)
     }
@@ -15,6 +16,7 @@ enum AppleMediaPolicy {
         let host = url.host?.lowercased() ?? ""
         if host.hasSuffix(".kuwo.cn") { return "https://bodian.kuwo.cn/" }
         if host == "i.scdn.co" { return "https://open.spotify.com/" }
+        if host == "mzstatic.com" || host.hasSuffix(".mzstatic.com") { return "https://music.apple.com/" }
         if host == "qq.com" || host.hasSuffix(".qq.com") { return "https://y.qq.com/" }
         if host == "kugou.com" || host.hasSuffix(".kugou.com") { return "https://www.kugou.com/" }
         if QishuiCatalogContract.allowedMedia(url) { return "https://www.qishui.com/" }

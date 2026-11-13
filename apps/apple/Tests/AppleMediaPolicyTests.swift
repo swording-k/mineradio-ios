@@ -18,6 +18,9 @@ import Foundation
         precondition(!AppleMediaPolicy.allowed(URL(string: "https://i.scdn.co/private/account")!))
         precondition(!AppleMediaPolicy.allowed(URL(string: "https://i.scdn.co.evil.test/image/abc")!))
         precondition(AppleMediaPolicy.referer(URL(string: "https://i.scdn.co/image/abc")!) == "https://open.spotify.com/")
+        precondition(AppleMediaPolicy.allowed(URL(string: "https://is1-ssl.mzstatic.com/image/thumb/Music/a/800x800bb.jpg")!))
+        precondition(!AppleMediaPolicy.allowed(URL(string: "https://is1-ssl.mzstatic.com.evil.test/image/a.jpg")!))
+        precondition(!AppleMediaPolicy.allowed(URL(string: "https://is1-ssl.mzstatic.com/private/a")!))
         print("Apple media: provider CDN boundaries, cover paths and provider Referer passed")
     }
 }

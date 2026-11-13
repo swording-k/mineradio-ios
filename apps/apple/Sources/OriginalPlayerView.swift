@@ -21,6 +21,7 @@ struct OriginalPlayerView: UIViewRepresentable {
         if openAccount != nil {
             config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAccountLogin")
         }
+        config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleMusic")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleAudioActivate")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleDiagnostics")
         config.userContentController.addScriptMessageHandler(context.coordinator, contentWorld: .page, name: "appleSaveImage")
@@ -82,6 +83,16 @@ struct OriginalPlayerView: UIViewRepresentable {
         config.mediaTypesRequiringUserActionForPlayback = [.video]
         let view = WKWebView(frame: .zero, configuration: config)
         context.coordinator.webView = view
+        AppleMusicController.shared.prepare = { [weak view] in
+            guard let view else { throw URLError(.cancelled) }
+            let result = try await view.evaluateJavaScript("window.__mineradioAppleMusicPrepare && window.__mineradioAppleMusicPrepare()")
+            guard result as? Bool == true else { throw URLError(.cannotLoadFromNetwork) }
+        }
+        AppleMusicController.shared.publish = { [weak view] state in
+            guard let data = try? JSONSerialization.data(withJSONObject: [state]),
+                  let args = String(data: data, encoding: .utf8) else { return }
+            view?.evaluateJavaScript("window.__mineradioAppleMusicReceive && window.__mineradioAppleMusicReceive.apply(null, \(args))", completionHandler: nil)
+        }
         nowPlaying?.send = { [weak view] name, value in
             guard let view, let data = try? JSONSerialization.data(withJSONObject: [name, value ?? NSNull()]),
                   let args = String(data: data, encoding: .utf8) else { return }
@@ -176,6 +187,13 @@ struct OriginalPlayerView: UIViewRepresentable {
             if message.name == "appleNowPlaying", let input = message.body as? [String: Any] {
                 parent.nowPlaying?.receive(input)
                 replyHandler(nil, nil); return
+            }
+            if message.name == "appleMusic", let input = message.body as? [String: Any],
+               let action = input["action"] as? String {
+                Task { @MainActor in
+                    replyHandler(await AppleMusicController.shared.command(action, value: (input["value"] as? NSNumber)?.doubleValue), nil)
+                }
+                return
             }
             if message.name == "appleAudioActivate" {
                 Task { @MainActor in
