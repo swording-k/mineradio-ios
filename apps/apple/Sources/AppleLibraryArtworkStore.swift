@@ -60,7 +60,7 @@ import Foundation
         if let result { cache.setObject(result as NSData, forKey: key as NSString, cost: result.count) }
         else {
             if misses.count >= 256 { misses.removeAll() }
-            misses[key] = Date().addingTimeInterval(30)
+            misses[key] = Date().addingTimeInterval(2)
         }
         return result
     }

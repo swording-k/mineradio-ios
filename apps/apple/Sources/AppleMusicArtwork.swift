@@ -21,11 +21,17 @@ import UIKit
         }.value
     }
     static func localSong(_ song: Song, size: Int) -> Data? {
-        // A catalog ID is not a media-library persistent ID. Match the item metadata too.
-        guard let id = UInt64(song.id.rawValue) else { return nil }
-        let q = MPMediaQuery.songs()
-        q.addFilterPredicate(MPMediaPropertyPredicate(value: NSNumber(value: id), forProperty: MPMediaItemPropertyPersistentID))
-        guard let item = q.items?.first, item.title == song.title, item.artist == song.artistName else { return nil }
-        return item.artwork?.image(at: CGSize(width: size, height: size))?.jpegData(compressionQuality: 0.88)
+        // MusicKit library IDs can be opaque strings (i.…). They are not
+        // MPMediaEntityPersistentIDs. Query by metadata, then verify the version.
+        let query = MPMediaQuery.songs()
+        query.addFilterPredicate(MPMediaPropertyPredicate(value: song.title, forProperty: MPMediaItemPropertyTitle, comparisonType: .equalTo))
+        let candidates = query.items ?? []
+        for item in candidates.prefix(40) {
+            guard item.title == song.title, item.artist == song.artistName,
+                  song.albumTitle == nil || item.albumTitle == song.albumTitle,
+                  song.duration == nil || abs(item.playbackDuration - (song.duration ?? 0)) < 3 else { continue }
+            if let data = item.artwork?.image(at: CGSize(width: size, height: size))?.jpegData(compressionQuality: 0.88) { return data }
+        }
+        return nil
     }
 }

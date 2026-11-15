@@ -35,6 +35,12 @@ import Foundation
             }
         }
         precondition(peak == 4)
+        let retry = URL(string: store.path(.song, "retry"))!
+        let firstMiss = await store.image(at: retry) { _, _ in nil }
+        precondition(firstMiss == nil)
+        try? await Task.sleep(nanoseconds: 2_100_000_000)
+        let recovered = await store.image(at: retry) { _, _ in Data([42]) }
+        precondition(recovered == Data([42]), "A transient artwork miss must expire")
         print("Artwork store: encoded IDs, deduplication, cache, disconnect and concurrency passed")
     }
 }
