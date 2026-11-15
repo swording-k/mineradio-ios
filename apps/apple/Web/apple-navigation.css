@@ -20,3 +20,13 @@ body.mr-browsing #top-right,body.mr-browsing #top-left,body.mr-browsing #home-bt
 body.mr-stage #top-right{left:calc(env(safe-area-inset-left) + 14px)!important;right:calc(env(safe-area-inset-right) + 14px)!important;max-width:none!important;gap:10px!important;justify-content:space-between!important;flex-wrap:nowrap!important}body.mr-stage #home-btn{position:static!important;transform:none!important;flex:0 0 44px!important;width:44px!important;height:44px!important}body.mr-stage #user-btn{min-width:0!important;max-width:calc(100% - 54px)!important;overflow-x:auto!important;scrollbar-width:none;flex-wrap:nowrap!important}
 @media(min-width:768px){#mr-browser{padding-left:max(28px,calc((100vw - 960px)/2));padding-right:max(28px,calc((100vw - 960px)/2))}}
 @media(max-height:480px){#mr-browser{padding-top:calc(env(safe-area-inset-top) + 4px)}#mr-browser header{padding-bottom:2px}#mr-browser h1{font-size:18px}#mr-browser nav button{min-height:36px;padding-bottom:6px}#mr-tools{padding:2px 0}#mr-browser .mr-filters button,#mr-browser .mr-actions button{min-height:30px}#mr-browser .mr-row{min-height:60px;padding:5px 0}#mr-browser .mr-detail{padding:10px 0;grid-template-columns:50px 1fr}#mr-browser .mr-detail .mr-art{width:50px;height:50px}#mr-browser .mr-welcome-card{padding:10px 0}}
+
+/* The song browser already owns search. In a short stage the navigation,
+   DIY and scrollable accounts share a single safe-area row. */
+@media(orientation:landscape) and (max-height:500px) and (max-width:1024px){
+  body.apple-client.mr-stage #search-area{display:none!important}
+  body.apple-client.mr-stage #top-right{justify-content:flex-start!important;pointer-events:none}
+  body.apple-client.mr-stage #top-right>button,body.apple-client.mr-stage #top-right #fullscreen-diy-btn{pointer-events:auto}
+  body.apple-client.mr-stage #top-right>#fullscreen-diy-zone{position:static!important;inset:auto!important;flex:0 0 56px;transform:none!important;margin:0;pointer-events:none}
+  body.apple-client.mr-stage #top-right>#user-btn{margin-left:auto;min-width:0!important;max-width:calc(100% - 120px)!important}
+}

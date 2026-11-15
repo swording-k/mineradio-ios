@@ -108,3 +108,27 @@ separate rollback commit, and existing user data is not migrated or discarded.
   artwork-stage outcomes/error codes locally, excluding names, IDs and URLs.
   The real-account artwork result is still unverified; an Apple Music App Service
   configuration error cannot be ruled out from source or simulator tests.
+
+## Build 30: Apple artwork and landscape DIY
+
+The attached iPhone 14 Pro reported build 29 and a final native artwork miss
+(stage 2, success 0). This locates a failure before JPEG delivery; it does not
+identify which MusicKit metadata field was absent. No library or account data
+were copied into the repository.
+
+The resolver now checks the playing queue entry, keeps verified MediaPlayer
+store IDs separate from numeric device-library identifiers, and can retrieve
+Apple artwork by exact catalog ID. A final MusicKit search for the active track
+requires matching title, artist, album and duration and an unambiguous result.
+The native thumbnail can also use MusicKit's ArtworkImage directly when no
+JPEG has arrived. Lyrics continue to use the existing labelled recording match.
+
+A live, credential-free CN lookup for Beautiful People (feat. Khalid), store ID
+1464549657, passed the production metadata parser and ImageIO decoder: 600 ×
+600, 119926 bytes. This verifies the cover exists, not that the user's library
+returns that store ID. Account-to-stage verification on build 30 remains open.
+
+The existing DIY button joins the header layout on short landscape viewports.
+The native playback menu also opens the visual settings directly. WebKit hit
+testing at 852×393, 667×375 and 393×852 hit the button and changed its mode in
+all three cases, including rotation back to portrait.

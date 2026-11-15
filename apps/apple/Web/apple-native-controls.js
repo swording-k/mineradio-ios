@@ -131,6 +131,11 @@
           if (typeof toggleFxPanel === 'function') toggleFxPanel(false);
           if (typeof togglePlaylistPanel === 'function') togglePlaylistPanel(true);
           break;
+        case 'diySettings':
+          if(typeof immersiveMode!=='undefined' && immersiveMode && typeof setImmersiveMode==='function')setImmersiveMode(false);
+          if(typeof isDiyMode==='function' && !isDiyMode())applyDiyMode(true,{save:true});
+          if(typeof toggleFxPanel==='function')toggleFxPanel(true);
+          break;
         case 'lyrics': if (typeof toggleLyricsPanel === 'function') toggleLyricsPanel(); break;
         case 'mode': if (typeof cyclePlayMode === 'function') cyclePlayMode(); break;
         case 'immersive': if (typeof toggleImmersiveMode === 'function') toggleImmersiveMode(); break;

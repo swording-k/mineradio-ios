@@ -23,18 +23,21 @@ import UIKit
             AppleArtwork.decode(data, maxPixelSize: size).flatMap { UIImage(cgImage: $0).jpegData(compressionQuality: 0.88) }
         }.value
     }
-    static func localSong(_ song: Song, size: Int) -> Data? {
+    static func localSong(_ song: Song, size: Int) -> (data: Data?, storeID: String?) {
         // MusicKit library IDs can be opaque strings (i.…). They are not
         // MPMediaEntityPersistentIDs. Query by metadata, then verify the version.
         let query = MPMediaQuery.songs()
         query.addFilterPredicate(MPMediaPropertyPredicate(value: song.title, forProperty: MPMediaItemPropertyTitle, comparisonType: .equalTo))
         let candidates = query.items ?? []
+        var ids = Set<String>()
         for item in candidates.prefix(40) {
             guard item.title == song.title, item.artist == song.artistName,
                   song.albumTitle == nil || item.albumTitle == song.albumTitle,
                   song.duration == nil || abs(item.playbackDuration - (song.duration ?? 0)) < 3 else { continue }
-            if let data = item.artwork?.image(at: CGSize(width: size, height: size))?.jpegData(compressionQuality: 0.88) { return data }
+            let id = AppleMusicMetadataArtwork.storeID(item.playbackStoreID)
+            if let id { ids.insert(id) }
+            if let data = item.artwork?.image(at: CGSize(width: size, height: size))?.jpegData(compressionQuality: 0.88) { return (data, id) }
         }
-        return nil
+        return (nil, ids.count == 1 ? ids.first : nil)
     }
 }

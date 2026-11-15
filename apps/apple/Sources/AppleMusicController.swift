@@ -11,6 +11,8 @@ import MusicKit
     @Published private(set) var playlists: [Playlist] = []
     @Published private(set) var canPlay = false
     @Published private(set) var active = false
+    struct DisplayArtwork: Equatable { let path: String; let artwork: Artwork }
+    @Published private(set) var displayArtwork: DisplayArtwork?
     private let artworkStore = AppleLibraryArtworkStore()
     private let player = ApplicationMusicPlayer.shared
     private var pulse: Task<Void, Never>?
@@ -88,8 +90,15 @@ import MusicKit
         }
     }
     private func songArtwork(_ song: Song, size: Int) async -> Data? {
-        if let direct = await AppleMusicArtwork.jpeg(song.artwork, size: size) { return direct }
-        if let local = AppleMusicArtwork.localSong(song, size: size) { return local }
+        // Queue entries may gain artwork after playback starts even when the
+        // original library Song retained in songCache never gains artwork.
+        let entryArt = currentSong?.id == song.id ? player.queue.currentEntry?.artwork : nil
+        if let direct = await AppleMusicArtwork.jpeg(entryArt, size: size) { return direct }
+        if entryArt != song.artwork, let direct = await AppleMusicArtwork.jpeg(song.artwork, size: size) { return direct }
+        let local = AppleMusicArtwork.localSong(song, size: size)
+        if let image = local.data { return image }
+        let catalogID = catalogArtworkID(song) ?? local.storeID
+        if let id = catalogID, let image = await exactStoreArtwork(id, size: size) { return image }
         if song.id.rawValue.hasPrefix("i."), song.id.rawValue.utf8.count < 256 {
             var components = URLComponents(string: "https://api.music.apple.com")!
             components.path = "/v1/me/library/songs/" + song.id.rawValue
@@ -113,11 +122,34 @@ import MusicKit
             if let data = await AppleMusicArtwork.jpeg(detailed.artwork, size: size) { return data }
             if let album = detailed.albums?.first, let data = await AppleMusicArtwork.jpeg(album.artwork, size: size) { return data }
         }
-        if let id = catalogArtworkID(song) {
+        if let id = catalogID {
             let request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: MusicItemID(id))
             if let catalog = try? await request.response().items.first {
-                return await AppleMusicArtwork.jpeg(catalog.artwork, size: size)
+                if let data = await AppleMusicArtwork.jpeg(catalog.artwork, size: size) { return data }
             }
+        }
+        // Search only for the playing track with no usable exact-ID art.
+        // Library scrolling must never start a metadata search per row.
+        if active, currentSong?.id == song.id, let album = song.albumTitle, !album.isEmpty, !Task.isCancelled {
+            var search = MusicCatalogSearchRequest(term: song.title + " " + song.artistName, types: [Song.self])
+            search.limit = 12
+            do {
+                let matches = try await search.response().songs.filter {
+                    AppleMusicMetadataArtwork.sameRelease([song.title, song.artistName, album],
+                        [$0.title, $0.artistName, $0.albumTitle ?? ""], duration: song.duration, otherDuration: $0.duration)
+                        && (song.isrc == nil || $0.isrc == nil || song.isrc == $0.isrc)
+                }
+                if let item = matches.first, Set(matches.map(\.id)).count == 1 {
+                    if let data = await AppleMusicArtwork.jpeg(item.artwork, size: size) { return data }
+                    if let id = AppleMusicMetadataArtwork.storeID(item.id.rawValue), id != catalogID,
+                       let data = await exactStoreArtwork(id, size: size) { return data }
+                }
+            } catch { AppleDiagnostics.shared.recordAppleArtwork(stage: 3, success: false, code: (error as NSError).code) }
+        }
+        if active, currentSong?.id == song.id {
+            // Which metadata existed at the failing boundary; no names, IDs or URLs.
+            let flags = (entryArt != nil ? 1 : 0) | (song.artwork != nil ? 2 : 0) | (catalogID != nil ? 4 : 0) | (local.storeID != nil ? 8 : 0)
+            AppleDiagnostics.shared.recordAppleArtwork(stage: 4, success: false, code: flags)
         }
         return nil
     }
@@ -144,12 +176,24 @@ import MusicKit
     }
     private func recordArtworkMiss() { AppleDiagnostics.shared.recordAppleArtwork(stage: 2, success: false) }
     private func catalogArtworkID(_ song: Song) -> String? {
-        if song.id.rawValue.allSatisfy({ $0.isNumber }) { return song.id.rawValue }
         guard let parameters = song.playParameters,
               let bytes = try? JSONEncoder().encode(parameters),
-              let object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
-              let id = object["catalogId"] as? String, !id.isEmpty, id.allSatisfy({ $0.isNumber }) else { return nil }
-        return id
+              let object = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] else { return nil }
+        return AppleMusicMetadataArtwork.catalogID(object)
+    }
+
+    private func exactStoreArtwork(_ id: String, size: Int) async -> Data? {
+        guard !Task.isCancelled else { return nil }
+        let region = (try? await MusicDataRequest.currentCountryCode) ?? Locale.current.region?.identifier
+        guard let region, region.count == 2 else { return nil }
+        var parts = URLComponents(string: "https://itunes.apple.com/lookup")!
+        parts.queryItems = [URLQueryItem(name: "id", value: id), URLQueryItem(name: "country", value: region)]
+        guard let url = parts.url,
+              let (bytes, response) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 5)),
+              (response as? HTTPURLResponse)?.statusCode == 200, bytes.count <= 262144,
+              let json = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+              let image = AppleMusicMetadataArtwork.storeArtwork(json, id: id, size: size) else { return nil }
+        return await AppleMusicArtwork.jpeg(url: image, size: size)
     }
     private func mapped(_ song: Song) -> [String: Any] {
         let remembered = songCache[song.id.rawValue]
@@ -260,10 +304,15 @@ import MusicKit
     private func emit() {
         var state: [String: Any] = ["active": active, "playing": active && player.state.playbackStatus == .playing,
                                   "current": max(0, player.playbackTime), "duration": duration]
+        var display: DisplayArtwork?
         if let song = currentSong {
+            if active, let art = player.queue.currentEntry?.artwork ?? song.artwork {
+                display = DisplayArtwork(path: artworkStore.path(.song, song.id.rawValue), artwork: art)
+            }
             if active && artworkTrackID != song.id.rawValue { resolvePlayingArtwork(song) }
             state["song"] = mapped(song)
         }
+        if display != displayArtwork { displayArtwork = display }
         publish?(state)
     }
     private func startPulse() {

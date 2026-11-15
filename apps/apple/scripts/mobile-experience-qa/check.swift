@@ -87,6 +87,11 @@ web.autoresizingMask=[.width,.height];win.contentView!.addSubview(web);win.order
  // Explicit close is always visible, including from a nested playlist page.
  _=try await js("document.getElementById('mr-close').click();void 0");await wait(100)
  guard (try await js("window.__mineradioNavigation.state().screen==='stage'") as? Bool)==true else{exit(19)}
+ for (w,h) in [(852,393),(667,375),(393,852)] {
+   win.setContentSize(NSSize(width:w,height:h));await wait(220)
+   let hit = try await js("(()=>{const b=document.getElementById('fullscreen-diy-btn'), r=b.getBoundingClientRect(), target=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); if (!b.contains(target)) return target?.id||'no target';const before=isDiyMode(); target.click();return before!==isDiyMode() ? 'toggled' : 'did not toggle';})()") as? String
+   print("DIY hit",w,h,hit ?? "nil");guard hit=="toggled" else {exit(20)}
+ }
  print("MOBILE QA COMPLETE")
  print("errors",try await js("JSON.stringify(window.__errors)") ?? "")
  exit(0)

@@ -1,4 +1,5 @@
 import SwiftUI
+import MusicKit
 
 /// iPhone 原生播放控制条（IOS_PLAN 阶段 C）。
 /// 三行布局：歌曲信息 / 细进度条 / 播放控制。歌名始终有独立的一整行，不会被按钮挤掉。
@@ -108,6 +109,7 @@ struct NativeControlBar: View {
             Button { model.command("prev") } label: { Label("上一首", systemImage: "backward.fill") }
             Button { model.command("like") } label: { Label(state.liked ? "取消喜欢" : "红心喜欢", systemImage: state.liked ? "heart.fill" : "heart") }
             Button { model.command("library") } label: { Label("歌单与播放队列", systemImage: "music.note.list") }
+            Button { model.command("diySettings") } label: { Label("DIY 视觉设置", systemImage: "slider.horizontal.3") }
             Button { model.command("lyrics") } label: { Label("歌词", systemImage: "quote.bubble") }
             Button { model.command("mode") } label: { Label("切换播放顺序", systemImage: "repeat") }
             Button { model.command("immersive") } label: {
@@ -174,10 +176,9 @@ struct NativeControlBar: View {
         Group {
             if let image = model.coverImage {
                 Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Image(systemName: "music.note").foregroundStyle(.white.opacity(0.5))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.08))
-            }
+            } else if state.provider == "applemusic" {
+                NativeMusicArtwork(link: state.cover)
+            } else { NativeMusicArtwork.placeholder }
         }
         .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .accessibilityHidden(true)
@@ -243,5 +244,21 @@ struct NativeControlBar: View {
         guard seconds.isFinite, seconds > 0 else { return "0:00" }
         let total = Int(seconds.rounded(.down))
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+// The SDK can draw device-library artwork without exposing a web image URL.
+// Observe playback metadata only in this thumbnail, not the entire control bar.
+private struct NativeMusicArtwork: View {
+    @ObservedObject private var music = AppleMusicController.shared
+    let link: String
+    static var placeholder: some View {
+        Image(systemName: "music.note").foregroundStyle(.white.opacity(0.5))
+            .frame(maxWidth: .infinity, maxHeight: .infinity).background(.white.opacity(0.08))
+    }
+    var body: some View {
+        if let item = music.displayArtwork, link == item.path || link.hasPrefix(item.path + "&") {
+            ArtworkImage(item.artwork, width: 44, height: 44)
+        } else { Self.placeholder }
     }
 }

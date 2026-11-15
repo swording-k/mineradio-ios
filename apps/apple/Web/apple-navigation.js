@@ -16,6 +16,15 @@
   returnButton.innerHTML='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg>';
   returnButton.setAttribute('aria-label','返回歌单');returnButton.title='歌单';
   returnButton.onclick=function(e){e.preventDefault();e.stopPropagation();navigate('library');};
+  // Narrow landscape: register the original DIY switch as a real toolbar item.
+  // Its desktop screen coordinates otherwise sit underneath the account strip.
+  var diyZone=document.getElementById('fullscreen-diy-zone'),accountButton=document.getElementById('user-btn');
+  if(diyZone&&accountButton){
+    var anchor=document.createComment('DIY portrait position');diyZone.before(anchor);
+    var shortLandscape=window.matchMedia('(orientation: landscape) and (max-height: 500px) and (max-width: 1024px)');
+    function placeDiy(){if(shortLandscape.matches)accountButton.before(diyZone);else anchor.after(diyZone);}
+    shortLandscape.addEventListener('change',placeDiy);placeDiy();
+  }
   var content=root.querySelector('#mr-content'),tools=root.querySelector('#mr-tools'),mini=root.querySelector('#mr-mini');
   function el(tag,text){var n=document.createElement(tag);if(text)n.textContent=text;return n;}
   function button(text,fn){var n=el('button',text);n.type='button';n.onclick=fn;return n;}
