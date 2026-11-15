@@ -15,3 +15,10 @@ and original local audio clock plus mini-player pause. The pause assertion waits
 for the original player's fade to finish. This does not validate subscriber
 playback, iOS safe areas/keyboard/system lifecycle, actual iPad GPU memory, touch
 performance, or a specific foldable device. No screenshot is subscriber proof.
+
+Build 28 additionally verifies a single stage entry, persistent custom-playlist
+creation, and an opaque Apple Music ID image URL reaching the actual shared
+cover loader (uHasCover=1) and mini-player image. Native MusicKit is replaced by
+metadata and generated-artwork fixtures in this runner. The offscreen window
+throttles stage drawing; its snapshot does not verify visible particles or native
+control-bar rendering on iOS. Real MusicKit library artwork remains a device gate.

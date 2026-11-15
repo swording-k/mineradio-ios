@@ -44,3 +44,13 @@ test('built-in playlists work on iOS with the desktop contract and persist', asy
   assert.equal((await host.removeBuiltInPlaylistTrack(id, 0)).ok, true);
   assert.equal((await host.deleteBuiltInPlaylist(id)).count, 0);
 });
+
+test('Apple Music identity persists in custom playlists instead of becoming NetEase', async () => {
+  const f=fixture(),host=f.context.window.desktopWindow;
+  const made=await host.createBuiltInPlaylist('Apple tracks');
+  await host.addBuiltInPlaylistTrack(made.playlist.id,{provider:'applemusic',source:'applemusic',id:'i.opaque',name:'Beautiful People',artist:'Ed Sheeran'});
+  const page=await host.readBuiltInPlaylist(made.playlist.id,{});
+  assert.equal(page.tracks[0].provider,'applemusic');
+  assert.equal(page.tracks[0].builtInIdentity,'applemusic:i.opaque');
+  assert(f.store.get('mineradio-apple-built-in-playlists-v1').includes('applemusic'));
+});

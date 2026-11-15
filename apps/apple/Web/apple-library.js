@@ -16,6 +16,7 @@
     var s = text(t && (t.provider || t.source || t.type), '', 32).toLowerCase();
     if (s === 'spotify' || (t && (t.spotifyId || t.spotifyUri))) return '';
     if (s === 'local' || (t && (t.localFileId || t.localKey))) return '';
+    if (s === 'applemusic') return 'applemusic';
     if (s === 'qq') return 'qq';
     if (s === 'kugou' || (t && (t.hash || t.fileHash))) return 'kugou';
     if (s === 'qishui') return 'qishui';

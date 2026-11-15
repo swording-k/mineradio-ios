@@ -39,16 +39,17 @@ web.autoresizingMask=[.width,.height];win.contentView!.addSubview(web);win.order
  }
  win.setContentSize(NSSize(width:393,height:852));await wait(100)
  _=try await js("document.querySelector('.mr-welcome-card button').click();void 0");await wait(200)
- let gate=try await js("(()=>{let b=document.querySelector('#apple-welcome-gate button'),r=b.getBoundingClientRect();return document.elementFromPoint(r.x+8,r.y+8)===b})()");guard gate as? Bool==true else {exit(3)}
+ let gate=try await js("(()=>{let b=document.querySelector('#apple-welcome-gate button'),r=b.getBoundingClientRect();return document.elementFromPoint(r.x+8,r.y+8)===b})()");guard gate as? Bool==true else {try await image("gate-failure");print(try await js("JSON.stringify({gate:document.getElementById('apple-welcome-gate').getBoundingClientRect().toJSON(),modal:getComputedStyle(document.getElementById('login-modal')).display})") ?? "");exit(3)}
  _=try await js("document.querySelector('#apple-welcome-gate button').click();void 0");await wait(200);try await image("platforms")
  _=try await js("closeLoginModal();document.getElementById('login-modal').classList.remove('show');userPlaylists=[{id:'fixture',provider:'netease',name:'晨间的留白',trackCount:2,cover:'/api/cover?url=fixture'}];renderUserPlaylistsList();window.__mineradioNavigation.navigate('library');void 0");await wait(150);try await image("library")
- _=try await js("fetchPlaylistTracksPage=async()=>({tracks:[{id:1,name:'清晨',artist:'演示数据',provider:'netease',cover:'/api/cover?url=fixture'},{id:2,name:'余光',artist:'演示数据',provider:'netease'}],nextOffset:2,hasMore:false});document.querySelector('#mr-content .mr-row').click();void 0");await wait(150);try await image("detail")
+ _=try await js("window.__realFetchPlaylistTracksPage=fetchPlaylistTracksPage;fetchPlaylistTracksPage=async()=>({tracks:[{id:1,name:'清晨',artist:'演示数据',provider:'netease',cover:'/api/cover?url=fixture'},{id:2,name:'余光',artist:'演示数据',provider:'netease'}],nextOffset:2,hasMore:false});document.querySelector('#mr-content .mr-row').click();void 0");await wait(150);try await image("detail")
  _=try await js("playQueue=[{id:1,name:'清晨',artist:'演示数据',provider:'netease'}];currentIdx=0;window.__mineradioNavigationTick();void 0");await wait(100)
  _=try await js("document.querySelector('#mr-mini-info').click();void 0");await wait(100)
  guard (try await js("window.__mineradioNavigation.state().screen==='stage'") as? Bool)==true else{exit(4)}
- _=try await js("document.getElementById('mr-return').click();void 0");await wait(100)
+ _=try await js("document.getElementById('home-btn').click();void 0");await wait(100)
  guard (try await js("window.__mineradioNavigation.state().playlist==='fixture'") as? Bool)==true else{exit(5)}
- print("return-preserves-playlist PASS")
+ guard (try await js("!document.getElementById('mr-return')&&!document.getElementById('apple-library-btn')") as? Bool)==true else{exit(13)}
+ print("return-preserves-playlist, single entry PASS")
  _=try await js("document.querySelector('[data-view=search]').click();void 0");await wait(100);try await image("search")
  _=try await js("fetchMusicSearchResults=async()=>({songs:[{id:'found',name:'找到的歌',artist:'演示数据',provider:'netease'}],providerPages:{netease:{nextOffset:1,hasMore:false}},hasMore:false});document.querySelector('#mr-tools input').value='演示';document.querySelector('#mr-tools form button').click();void 0");await wait(100)
  guard (try await js("document.querySelector('#mr-content .mr-row').textContent.includes('找到的歌')") as? Bool)==true else{exit(8)}
@@ -63,11 +64,25 @@ web.autoresizingMask=[.width,.height];win.contentView!.addSubview(web);win.order
  _=try await js("document.querySelector('#mr-content .mr-row').click();void 0");await wait(1600)
  let position=try await js("audio.currentTime");print("local-audio-clock",position ?? "")
  guard let t=position as? Double,t>0 else{exit(11)}
- _=try await js("document.querySelector('#mr-mini [data-act=toggle]').click();void 0");await wait(100)
+ _=try await js("closeLocalBeatModal();if(window.gsap)gsap.globalTimeline.time(gsap.globalTimeline.time()+1);document.querySelector('#mr-mini [data-act=toggle]').click();void 0");await wait(100)
 
  await wait(500);guard (try await js("audio.paused") as? Bool)==true else{exit(12)}
  try await image("local-mini")
  print("local playback and mini pause PASS")
+ _=try await js("fetchPlaylistTracksPage=window.__realFetchPlaylistTracksPage;document.querySelector('[data-view=library]').click();document.querySelector('#mr-tools button').click();[...document.querySelectorAll('#mr-tools button')].find(b=>b.textContent.includes('新建歌单')).click();document.querySelector('#mr-tools input').value='QA 自建歌单';document.querySelector('#mr-tools form button').click();void 0");await wait(200)
+ guard (try await js("userPlaylists.some(p=>p.name==='QA 自建歌单'&&p.provider==='mineradio') && document.getElementById('mr-content').textContent.includes('QA 自建歌单')") as? Bool)==true else{exit(14)}
+ try await image("created-playlist")
+ print("persistent built-in playlist creation PASS")
+ // Exercise the actual shared WebGL cover loader with an opaque library ID.
+ _=try await js("closeLocalBeatModal();closeLoginModal();if(window.gsap)gsap.globalTimeline.time(gsap.globalTimeline.time()+1);window.__mineradioAppleMusicReceive({active:true,playing:false,current:12,duration:197,song:{id:'i.opaque',name:'Beautiful People',artist:'Ed Sheeran',provider:'applemusic',cover:'/api/apple-music-art/92DDAB59-4702-4C59-804C-22F34B68DFE5/song?id=i.opaque&art=1'}});window.__mineradioNavigation.navigate('stage');void 0");await wait(1500)
+ let cover=try await js("JSON.stringify({cover:uniforms.uHasCover.value,thumb:document.getElementById('thumb-cover').getAttribute('src'),duplicate:!!document.getElementById('mr-return')||!!document.getElementById('apple-library-btn')})");print("opaque cover pipeline",cover ?? "")
+ guard (try await js("uniforms.uHasCover.value>0.5&&getComputedStyle(document.getElementById('empty-home')).display==='none'&&!document.getElementById('mr-return')&&!document.getElementById('apple-library-btn')") as? Bool)==true else{exit(15)}
+ let homeHit=try await js("(()=>{let b=document.getElementById('home-btn'),r=b.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b || b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()");guard homeHit as? Bool==true else{try await image("home-hit-failure");print(try await js("(()=>{let b=document.getElementById('home-btn'),r=b.getBoundingClientRect();return JSON.stringify({rect:r.toJSON(),hidden:b.hidden,css:b.getAttribute('style'),parent:b.parentElement.outerHTML.slice(0,250),hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,250)})})()") ?? "");exit(16)}
+ // The offscreen macOS test window throttles stage drawing; the cover uniform
+ // above tests texture ingestion, not a visual/performance assertion for iOS.
+ _=try await js("window.__mineradioNavigation.navigate('library');window.__mineradioNavigationTick();void 0");await wait(150)
+ guard (try await js("document.querySelector('#mr-mini img').naturalWidth>0") as? Bool)==true else{exit(17)}
+ try await image("apple-artwork-mini-fixture")
  print("MOBILE QA COMPLETE")
  print("errors",try await js("JSON.stringify(window.__errors)") ?? "")
  exit(0)

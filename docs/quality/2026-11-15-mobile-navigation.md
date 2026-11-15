@@ -49,3 +49,31 @@ contracts and the original single queue. It does not replace the particle stage.
 
 No TestFlight or App Store upload is part of this candidate. Build 26 remains a
 separate rollback commit, and existing user data is not migrated or discarded.
+
+## Follow-up: build 28 — artwork and duplicate navigation
+
+- Removed the legacy apple-library-btn node with its independent click listener;
+  reuse home-btn as the single song-list return. This removes mr-return entirely.
+  Test checks both duplicate IDs absent and the canonical entry hit-testable.
+- Song lists/search/playing queue are separate tabs. Added a naming form for
+  existing persistent custom-playlist APIs and add-current-track action, retained
+  platform filters, shortened detail header and used compact transport icons.
+  Fixed the mini info button accidentally inheriting a fixed 44-pixel width.
+- Apple library IDs are opaque, not MPMediaEntityPersistentIDs: native fallback
+  now queries title and verifies artist/album/duration before taking local art.
+  Library-album then catalog-album relationships and exact catalog-ID lookup are
+  additional paths. No loose song-name image search is used.
+- All Apple song covers now use the app's coalesced native artwork path. Playback
+  resolves art asynchronously and publishes a cover revision after success;
+  bounded retries and a 2-second negative-cache TTL allow a first miss to recover.
+  The stage and native bar receive the same revised address. DRM audio unchanged.
+- Custom playlists preserve Apple Music provider identity. Reopening one can
+  resolve the selected native song ID after a new app session.
+- 88 Apple JS tests pass; artwork-store native test includes transient-miss
+  expiry; signed iOS Release build passes. Seven-size WebKit QA plus custom
+  creation, local audio/pause, opaque-art texture ingestion and mini thumbnail
+  pass. The source of the texture is synthetic art, not this user's MusicKit data.
+- The user's actual Beautiful People artwork and iOS native control-bar rendering
+  remain unverified on a real signed-in device. Do not label that specific report
+  resolved solely because a synthetic texture loaded. No physical device control
+  or TestFlight/App Store upload performed.

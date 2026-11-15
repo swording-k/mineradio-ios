@@ -138,3 +138,14 @@ MusicKit App Service must be enabled in Apple Developer → Identifiers → com.
 Native metadata now retains artwork from loaded songs, reloads late artwork, performs the original first-play particle fade-in and drives the lyrics clock with native playback position. Where a strict title/artist and duration match exists, the existing NetEase lyric matcher supplies lyrics with an explicit matching-source toast. No Apple synchronized-lyrics API or PCM extraction is claimed. Unmatched lyrics stay unavailable; Apple Music audio is never replaced by another provider for lyric matching. Lyrics matching sends song-title/artist search metadata to NetEase.
 
 Verification and remaining physical acceptance: docs/quality/2026-11-14-apple-music-parity.md. No TestFlight/App Store upload is performed by this change.
+
+
+## Current mobile candidate — 1.1.0 (28)
+
+Build from the current feature branch and regenerate via project.yml. Build 28
+uses a single song-list entry and includes custom playlist creation and a compact
+mini player. Apple Music art uses one native resolver for the stage and controls,
+including opaque library IDs, album relationships and bounded late-art retries.
+88 adapter tests, native artwork-cache checks and a signed Release build passed.
+See docs/quality/2026-11-15-mobile-navigation.md for exact evidence and remaining
+real-account/device gates; this is not a claim of stable MusicKit artwork playback.
