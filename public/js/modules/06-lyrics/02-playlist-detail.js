@@ -140,6 +140,7 @@ function playlistPanelProviderId(provider, id) {
   if (provider === 'qq') return 'qq:' + id;
   if (provider === 'kugou') return 'kugou:' + id;
   if (provider === 'qishui') return 'qishui:' + id;
+  if (provider === 'applemusic') return 'applemusic:' + id;
   if (provider === 'spotify') return 'spotify:' + id;
   return id;
 }
@@ -161,6 +162,14 @@ function playlistPanelNoticeHtml(text, isError) {
   if (!text) text = '歌单暂无可播放歌曲';
   return '<div style="text-align:center;padding:14px 10px;color:' + (isError ? 'rgba(255,180,160,.82)' : 'rgba(255,255,255,.30)') + ';font-size:11.5px;line-height:1.55">' + escHtml(text) + '</div>';
 }
+// Keep a missing personal artwork distinct from an actual playlist/album cover.
+function applePlaylistImage(url, className, size) {
+  var empty = '<span class="am-no-art" role="img" aria-label="暂无封面" style="width:' + size + 'px;height:' + size +
+    'px;display:inline-grid;place-items:center;flex:none;border-radius:7px;background:#242428;color:#aaa">♪</span>';
+  return '<span style="display:inline-grid;position:relative;flex:none">' + empty + (url ?
+    '<img class="' + className + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" src="' + escHtml(url) +
+    '" alt="" loading="lazy" decoding="async" onload="this.previousElementSibling.setAttribute(&quot;aria-hidden&quot;,&quot;true&quot;)" onerror="this.hidden=true;this.style.display=&quot;none&quot;">' : '') + '</span>';
+}
 function playlistPanelDetailRowsHtml(options) {
   options = options || {};
   var st = playlistPanelDetailState;
@@ -181,6 +190,7 @@ function playlistPanelDetailRowsHtml(options) {
     var i = start + localIndex;
     var thumb = songCoverSrc(song, 60);
     var imgTag = thumb ? '<img src="' + escHtml(thumb) + '" alt="" loading="lazy" decoding="async" onerror="this.style.opacity=0.2">' : '<div style="width:34px;height:34px;border-radius:7px;background:rgba(255,255,255,.06);flex:0 0 auto"></div>';
+    if (song.provider === 'applemusic') imgTag = applePlaylistImage(thumb, '', 34);
     var removeButton = normalizePlaylistProvider((st.key || '').split(':')[0]) === 'mineradio'
       ? '<button type="button" class="pl-detail-remove" data-pl-detail-remove="' + i + '" title="从内置歌单移除" aria-label="从内置歌单移除">×</button>'
       : '';
@@ -287,6 +297,7 @@ function playlistPanelDetailHtml(pl, provider, detailWindow) {
   var loading = playlistPanelDetailState.loading;
   var cover = pl && pl.cover ? (provider === 'netease' ? (pl.cover + '?param=96y96') : pl.cover) : '';
   var img = cover ? '<img class="pl-detail-cover" src="' + escHtml(cover) + '" alt="" decoding="async" onerror="this.style.opacity=0.2">' : '<div class="pl-detail-cover"></div>';
+  if (provider === 'applemusic') img = applePlaylistImage(cover, 'pl-detail-cover', 44);
   var expectedTotal = Math.max(tracks.length, Number(playlistPanelDetailState.total) || Number(pl.trackCount) || 0);
   var rows = playlistPanelDetailRowsHtml(detailWindow);
   var canUncollect = !!(pl && pl.subscribed && !pl.virtual && (provider === 'netease' || provider === 'qishui' || provider === 'spotify'));
@@ -661,6 +672,7 @@ function renderUserPlaylistsList(opts) {
     var providerLabel = playlistProviderLabel(provider);
     var thumb = pl.cover ? (provider === 'netease' ? (pl.cover + '?param=88y88') : pl.cover) : '';
     var imgTag = thumb ? '<img src="' + thumb + '" alt="" loading="lazy" decoding="async" onerror="this.style.opacity=0.2">' : (provider === 'mineradio' ? '<div class="pl-built-in-placeholder">MR</div>' : '<div style="width:44px;height:44px;border-radius:8px;background:rgba(255,255,255,.06);flex-shrink:0"></div>');
+    if (provider === 'applemusic') imgTag = applePlaylistImage(thumb, '', 44);
     var key = playlistPanelKey(provider, pl.id);
     var isExpanded = playlistPanelDetailState.key === key;
     var expanded = isExpanded ? ' expanded' : '';

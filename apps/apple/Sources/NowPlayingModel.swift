@@ -140,13 +140,18 @@ import UIKit
     private func loadArtwork(_ link: String) {
         artworkTask?.cancel()
         artworkURL = link; artwork = nil; coverImage = nil
-        guard let url = URL(string: link), url.scheme == "https", AppleMediaPolicy.allowed(url) else { return }
+        guard let url = URL(string: link) else { return }
         artworkTask = Task { [weak self] in
-            guard let cached = await AppleCoverCache.shared.image(for: url, referer: AppleMediaPolicy.referer(url)),
-                  !Task.isCancelled else { return }
+            let bytes: Data?
+            if url.scheme == nil, link.hasPrefix(AppleLibraryArtworkStore.prefix) {
+                bytes = await AppleMusicController.shared.artworkData(at: url)
+            } else if url.scheme == "https", AppleMediaPolicy.allowed(url) {
+                bytes = await AppleCoverCache.shared.image(for: url, referer: AppleMediaPolicy.referer(url))?.data
+            } else { return }
+            guard let bytes, !Task.isCancelled else { return }
             // ImageIO creates a bounded thumbnail off the UI thread (512² is ~1 MiB RGBA).
             let decoded = await Task.detached(priority: .utility) {
-                AppleArtwork.decode(cached.data, maxPixelSize: 512)
+                AppleArtwork.decode(bytes, maxPixelSize: 512)
             }.value
             guard !Task.isCancelled, let decoded, let self, self.artworkURL == link else { return }
             let image = UIImage(cgImage: decoded)

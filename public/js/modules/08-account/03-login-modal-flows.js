@@ -311,7 +311,7 @@ function updateLoginProviderCapsuleStatus(provider, btn) {
   handle.setAttribute('aria-label', 'Drag to sort');
   var logo = btn.querySelector('.provider-logo');
   if (logo) {
-    if (st.loggedIn) {
+    if (st.loggedIn || meta.icon) {
       logo.classList.add('has-avatar');
       logo.innerHTML = '<img src="' + providerAvatarSrc(provider, st) + '" alt="">';
     } else {

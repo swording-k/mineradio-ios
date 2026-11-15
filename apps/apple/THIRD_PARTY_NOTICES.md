@@ -32,3 +32,8 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+## Apple Music
+
+The Apple Music icon is supplied by Apple and identifies its music service.
+Source: [Apple Music Identity Guidelines, Apple Music Icon](https://marketing.services.apple/apple-music-identity-guidelines); unmodified small RGB artwork from Apple's downloadable icon package.

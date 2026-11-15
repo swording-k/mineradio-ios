@@ -11,6 +11,7 @@ import MusicKit
     @Published private(set) var playlists: [Playlist] = []
     @Published private(set) var canPlay = false
     @Published private(set) var active = false
+    private let artworkStore = AppleLibraryArtworkStore()
     private let player = ApplicationMusicPlayer.shared
     private var pulse: Task<Void, Never>?
     private var requestGeneration = 0
@@ -58,13 +59,45 @@ import MusicKit
             emit(); startPulse(); return true
         } catch { fail(error); return false }
     }
+    func artworkData(at url: URL) async -> Data? {
+        guard !detached, MusicAuthorization.currentStatus == .authorized else { return nil }
+        return await artworkStore.image(at: url) { [weak self] kind, id in
+            guard let self else { return nil }
+            switch kind {
+            case .song:
+                guard let song = self.songCache[id] else { return nil }
+                return await self.songArtwork(song, size: 600)
+            case .library:
+                for song in self.songs.prefix(8) {
+                    if let image = await self.songArtwork(song, size: 320) { return image }
+                }
+            case .playlist:
+                guard let list = self.playlists.first(where: { $0.id.rawValue == id }) else { return nil }
+                if let data = await AppleMusicArtwork.jpeg(list.artwork, size: 400) { return data }
+                guard let detailed = try? await list.with(.tracks, preferredSource: .library) else { return nil }
+                if detailed.artwork != list.artwork, let data = await AppleMusicArtwork.jpeg(detailed.artwork, size: 400) { return data }
+                for track in (detailed.tracks?.prefix(8) ?? []) {
+                    if Task.isCancelled { return nil }
+                    if case .song(let song) = track, let image = await self.songArtwork(song, size: 320) { return image }
+                }
+            }
+            return nil
+        }
+    }
+    private func songArtwork(_ song: Song, size: Int) async -> Data? {
+        if let direct = await AppleMusicArtwork.jpeg(song.artwork, size: size) { return direct }
+        if let local = AppleMusicArtwork.localSong(song, size: size) { return local }
+        guard let album = try? await song.with(.albums, preferredSource: .catalog).albums?.first else { return nil }
+        return await AppleMusicArtwork.jpeg(album.artwork, size: size)
+    }
     private func mapped(_ song: Song) -> [String: Any] {
         let remembered = songCache[song.id.rawValue]
-        let artwork = song.artwork ?? remembered?.artwork
+        let remote = (song.artwork ?? remembered?.artwork)?.url(width: 800, height: 800)
+        let cover = remote.flatMap { $0.scheme == "https" && AppleMediaPolicy.allowed($0) ? $0.absoluteString : nil } ?? artworkStore.path(.song, song.id.rawValue)
         return ["id": song.id.rawValue, "providerSongId": song.id.rawValue, "provider": "applemusic", "source": "applemusic", "type": "applemusic",
                 "name": song.title, "artist": song.artistName, "album": song.albumTitle ?? remembered?.albumTitle ?? "",
                 "duration": song.duration ?? remembered?.duration ?? 0,
-                "cover": artwork?.url(width: 800, height: 800)?.absoluteString ?? ""]
+                "cover": cover]
     }
     private func remember(_ values: [Song]) { for song in values { songCache[song.id.rawValue] = song } }
     private func status() -> [String: Any] {
@@ -80,7 +113,7 @@ import MusicKit
         }
         if action == "logout" {
             _ = await command("stop"); detached = true; UserDefaults.standard.set(true, forKey: "apple-music-disconnected")
-            songCache.removeAll(); return ["ok": true, "loggedIn": false]
+            songCache.removeAll(); songs = []; playlists = []; queuedSongs.removeAll(); artworkStore.reset(); return ["ok": true, "loggedIn": false]
         }
         if ["library", "tracks", "search", "playID"].contains(action) {
             guard MusicAuthorization.currentStatus == .authorized && !detached else { return ["ok": false, "message": "请先连接 Apple Music。"] }
@@ -89,8 +122,8 @@ import MusicKit
                     if playlists.isEmpty && songs.isEmpty { await connect() }
                     guard !connectionFailed else { return ["ok": false, "message": message] }
                     remember(songs)
-                    let liked: [String: Any] = ["id": "applemusic-library", "provider": "applemusic", "name": "Apple Music 资料库", "virtual": true, "trackCount": songs.count, "cover": songs.first.map { mapped($0)["cover"] ?? "" } ?? "", "shelfPane": "mine"]
-                    let rows: [[String: Any]] = playlists.map { ["id": $0.id.rawValue, "provider": "applemusic", "source": "applemusic", "name": $0.name, "cover": $0.artwork?.url(width: 400, height: 400)?.absoluteString ?? "", "trackCount": $0.tracks?.count ?? 0, "shelfPane": "mine"] }
+                    let liked: [String: Any] = ["id": "applemusic-library", "provider": "applemusic", "name": "Apple Music 资料库", "virtual": true, "trackCount": songs.count, "cover": artworkStore.path(.library, "songs"), "shelfPane": "mine"]
+                    let rows: [[String: Any]] = playlists.map { ["id": $0.id.rawValue, "provider": "applemusic", "source": "applemusic", "name": $0.name, "cover": artworkStore.path(.playlist, $0.id.rawValue), "trackCount": $0.tracks?.count ?? 0, "shelfPane": "mine"] }
                     return ["ok": true, "playlists": [liked] + rows, "canPlay": canPlay]
                 }
                 let offset = min(5000, max(0, input["offset"] as? Int ?? 0)), limit = min(100, max(1, input["limit"] as? Int ?? 50))

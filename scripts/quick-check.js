@@ -8,6 +8,27 @@ const appRoot = path.resolve(__dirname, '..');
 const runElectron = process.argv.includes('--electron') || process.argv.includes('--full');
 const forbiddenPattern = /\b(fsr|dlss|native-fg|framegen)\b|frame generation/i;
 
+// Exercise the shared shelf identity -> playlist loader -> endpoint contract instead
+// of requiring three copies of every provider's URL literal in the renderer.
+function checkShelfPlaylistRoute(provider, core, content, detail, loader) {
+  const c = { userPlaylists: [{ id: 'p-123', provider, name: 'fixture', cover: 'art' }],
+    myPodcastCollections: [], compactCount: () => '0', shelfShowsPodcasts: () => false,
+  };
+  c.activePlaylists = () => c.userPlaylists;
+  function part(src, start, end) { return src.slice(src.indexOf('function ' + start + '('), src.indexOf('function ' + end + '(')); }
+  vm.runInNewContext(part(detail, 'normalizePlaylistProvider', 'playlistProviderName') +
+    part(detail, 'playlistPanelProviderId', 'playlistCardPriority') +
+    part(detail, 'playlistTracksEndpoint', 'fetchPlaylistTracksPage') +
+    part(loader, 'playlistQueueSource', 'playlistQueuePageSize') +
+    part(core, 'currentItems', 'wrapText'), c);
+  const card = c.currentItems()[0], source = c.playlistQueueSource(card.playlistId);
+  if (card.cover !== 'art' || source.provider !== provider || source.id !== 'p-123' ||
+      !c.playlistTracksEndpoint(source.provider, source.id, {}).startsWith('/api/' + provider + '/playlist/tracks?') ||
+      !content.includes('fetchPlaylistTracksPage(contentSource.provider') || !content.includes('playlistQueueSource(playlistId)')) {
+    fail('3D shelf lost playlist identity or route: ' + provider);
+  }
+}
+
 function rel(file) {
   return path.relative(appRoot, file).replace(/\\/g, '/');
 }
@@ -1773,9 +1794,7 @@ function checkQishuiProviderGuard() {
   if (!/function playlistQueueSource/.test(playlistLoadText) || !/raw\.indexOf\('qishui:'\)/.test(playlistLoadText) || !/playlistTracksEndpoint\(source\.provider/.test(playlistLoadText)) {
     fail('whole-playlist queue loading must support qishui: playlist ids');
   }
-  if (!/provider === 'qishui'/.test(shelfCoreText) || !/qishui:'/.test(shelfCoreText) || !/\/api\/qishui\/playlist\/tracks/.test(shelfContentText)) {
-    fail('3D shelf must display and drill into Qishui playlists through the Qishui endpoint');
-  }
+  checkShelfPlaylistRoute('qishui', shelfCoreText, shelfContentText, playlistDetailText, playlistLoadText);
   if (!/网易云 \/ QQ \/ 酷狗 \/ 汽水/.test(homeText) || !/hasAnyPlatformLogin\(\)/.test(homeText) || /网易云 \/ QQ 音乐/.test(homeText)) {
     fail('Home discover must acknowledge Qishui/Kugou login playlists instead of only Netease/QQ');
   }
@@ -1944,9 +1963,7 @@ async function checkSpotifyProviderGuard() {
   if (!/function playlistQueueSource/.test(playlistLoadText) || !/raw\.indexOf\('spotify:'\)/.test(playlistLoadText) || !/playlistTracksEndpoint\(source\.provider/.test(playlistLoadText)) {
     fail('whole-playlist queue loading must support spotify: playlist ids');
   }
-  if (!/provider === 'spotify'/.test(shelfCoreText) || !/spotify:/.test(shelfCoreText) || !/\/api\/spotify\/playlist\/tracks/.test(shelfContentText)) {
-    fail('3D shelf must display and drill into Spotify playlists through the Spotify endpoint');
-  }
+  checkShelfPlaylistRoute('spotify', shelfCoreText, shelfContentText, playlistDetailText, playlistLoadText);
   if (!/"\*-api\.js"/.test(packageText) || !/"\*-api\.js"/.test(internalBuilderText)) {
     fail('official and internal-beta package file lists must include root provider API modules');
   }

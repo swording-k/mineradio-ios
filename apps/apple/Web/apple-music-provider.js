@@ -2,6 +2,7 @@
 (function () {
   var bridge=window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.appleMusic;
   if(!bridge || window.__appleMusicProvider)return;window.__appleMusicProvider=true;
+  var providerIcon='/assets/apple-music-icon.svg';
   var account={provider:'applemusic',loggedIn:false,nickname:'Apple Music'}, revision=0, appleLists=[], authorizing=false;
   function request(input){return bridge.postMessage(input).then(function(r){if(r && r.ok===false)throw new Error(r.message||'Apple Music 请求未完成');return r;});}
   function isApple(s){return !!s && (s.provider==='applemusic'||s.source==='applemusic'||s.type==='applemusic');}
@@ -13,7 +14,7 @@
   songProviderKey=function(s){return isApple(s)?'applemusic':provider.apply(this,arguments);};
   queueItemKey=function(s){return isApple(s)?'applemusic:'+String(s.id):key.apply(this,arguments);};
   songSourceLabel=function(s){return isApple(s)?'Apple Music':label.apply(this,arguments);};
-  platformMeta=function(p){return p==='applemusic'?{key:p,short:'AM',label:'Apple Music',app:'Apple Music',dot:'applemusic'}:meta.apply(this,arguments);};
+  platformMeta=function(p){return p==='applemusic'?{key:p,short:'AM',label:'Apple Music',app:'Apple Music',dot:'applemusic',icon:providerIcon}:meta.apply(this,arguments);};
   platformStatus=function(p){return p==='applemusic'?account:status.apply(this,arguments);};
   hasAnyPlatformLogin=function(){return account.loggedIn||any.apply(this,arguments);};
   loggedProviderCount=function(){return count.apply(this,arguments)+(account.loggedIn?1:0);};
@@ -49,7 +50,7 @@
   lyricEndpointForSong=function(s){return isApple(s)?'/api/applemusic/lyric?id='+encodeURIComponent(s.id):lyric.apply(this,arguments);};
   function button(id,text,parent,click){if(!parent)return null;var b=document.createElement('button');b.id=id;b.type='button';b.textContent=text;b.onclick=click;parent.appendChild(b);return b;}
   var login=button('login-provider-applemusic','',document.getElementById('login-platform-tabs'),function(){selectLoginProviderNode('applemusic');authorize();});
-  if(login){login.className='applemusic workflow-node';login.setAttribute('data-login-provider','applemusic');login.innerHTML='<span class="provider-logo">AM</span><b>Apple Music</b><small>系统授权</small><span class="flow-port out" data-login-provider-output="applemusic" title="连接 Apple Music"></span>';}
+  if(login){login.className='applemusic workflow-node';login.setAttribute('data-login-provider','applemusic');login.innerHTML='<span class="provider-logo has-avatar"><img src="'+providerIcon+'" alt=""></span><b>Apple Music</b><small>系统授权</small><span class="flow-port out" data-login-provider-output="applemusic" title="连接 Apple Music"></span>';}
   var search=button('search-mode-applemusic','AM',document.getElementById('search-mode-tabs'),function(){setSearchMode('applemusic');});
   var user=button('user-provider-applemusic','Apple Music',document.querySelector('#user-modal .user-platform-tabs'),function(){setActiveAccountProvider('applemusic');});
   button('account-add-applemusic','连接 Apple Music',document.querySelector('#user-modal .account-modal-actions'),function(){openProviderLogin('applemusic');});

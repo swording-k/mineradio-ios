@@ -156,6 +156,7 @@
   }, true);
   var loginStyle = document.createElement('style');
   loginStyle.textContent = `
+    #apple-login-platform-heading { display:none; }
     body.apple-client #login-node-graph [data-login-provider-sort] { touch-action: none; }
     @media ${PHONE} {
       /* 头部本身原来 absolute；只改退出按钮不会给提示让位。让整个头部参与文档布局。 */
@@ -172,44 +173,28 @@
       body.apple-client #login-auth-drawer .login-auth-copy #qr-status { text-align: center; }
       body.apple-client #login-auth-drawer .login-auth-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
       body.apple-client #login-auth-drawer .login-auth-actions .modal-btn { flex: 0 0 auto; white-space: nowrap; }
-      body.apple-client #login-node-graph .login-node-providers .flow-port.out { right: auto !important; left: -24px !important; }
-      body.apple-client #login-node-graph .flow-port { touch-action: none; }
-      body.apple-client #login-node-graph .login-node-providers [data-login-provider] { cursor: pointer; }
+      body.apple-client #login-modal:not(.login-easter-egg-locked) #apple-login-platform-heading {display:block;margin:0 0 12px;font-size:20px;text-align:start}
+      body.apple-client #login-workflow-svg, body.apple-client #login-node-graph .flow-port,
+      body.apple-client #login-node-graph [data-login-provider-sort], body.apple-client #login-node-graph .login-node-copy,
+      body.apple-client #login-node-graph .login-node-orb {display:none!important}
+      body.apple-client #login-node-graph {display:flex!important;flex-direction:column;align-items:stretch!important;width:100%;box-sizing:border-box;gap:8px;padding:0!important;min-height:0}
+      body.apple-client #login-platform-tabs {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:5px}
+      body.apple-client #login-platform-tabs button {cursor:pointer;min-height:48px;grid-template-columns:32px minmax(0,1fr) auto auto!important;padding:6px 10px}
+      body.apple-client #login-platform-tabs button .provider-logo {grid-column:1}
+      body.apple-client #login-platform-tabs button b {grid-column:2;grid-row:1}
+      body.apple-client #login-platform-tabs .login-provider-state-badge {grid-column:3}
+      body.apple-client #login-platform-tabs .login-provider-external-switch {grid-column:4}
+      body.apple-client #login-node-graph .login-node-hub {display:none!important}
+      body.apple-client #login-modal:has(#login-auth-drawer.show) #login-node-graph .login-node-hub {display:block!important;min-height:0;padding:0;background:none;border:none}
     }`;
   document.head.appendChild(loginStyle);
-  // 竖屏手机登录提示：连线界面横屏更好用。提供一键转横屏，关闭登录弹窗后恢复原方向。
-  var loginModal = document.getElementById('login-modal');
-  var dialog = loginModal && loginModal.querySelector('.dual-login-modal');
+  // The sheet already handles row taps. Give narrow screens a conventional
+  // heading instead of asking someone holding a phone to rotate or draw wires.
+  var dialog = document.querySelector('#login-modal .dual-login-modal');
   if (dialog) {
-    var tip = document.createElement('div');
-    tip.id = 'apple-login-rotate-tip';
-    tip.innerHTML = '<span>点平台卡片即可登录，也可横屏连线。</span>' +
-      '<button type="button" class="fx-mini-btn ghost">切换横屏</button>';
-    tip.querySelector('button').addEventListener('click', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      if (typeof window.__mineradioAppleTempOrientation === 'function') window.__mineradioAppleTempOrientation('landscape');
-    });
-    var head = dialog.querySelector('.login-panel-head');
-    dialog.insertBefore(tip, head ? head.nextSibling : dialog.firstChild);
-    var wasOpen = false;
-    new MutationObserver(function () {
-      var open = loginModal.classList.contains('show');
-      if (wasOpen && !open && typeof window.__mineradioAppleTempOrientation === 'function') window.__mineradioAppleTempOrientation('');
-      wasOpen = open;
-    }).observe(loginModal, {attributes: true, attributeFilter: ['class']});
-    var tipStyle = document.createElement('style');
-    tipStyle.textContent = `
-      #apple-login-rotate-tip { display: none; }
-      @media (max-width: 767px) and (orientation: portrait) {
-        body.apple-client #login-modal:not(.login-easter-egg-locked) #apple-login-rotate-tip {
-          display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px;
-          border-radius: 14px; border: 1px solid rgba(244, 210, 138, .28); background: rgba(244, 210, 138, .08);
-          color: rgba(255, 244, 214, .9); font-size: 12px; line-height: 1.45;
-        }
-        body.apple-client #apple-login-rotate-tip span { flex: 1 1 auto; min-width: 0; }
-        body.apple-client #apple-login-rotate-tip button { flex: 0 0 auto; white-space: nowrap; min-height: 44px; height: auto; padding: 8px 12px; }
-      }`;
-    document.head.appendChild(tipStyle);
+    var heading = document.createElement('h2');
+    heading.id = 'apple-login-platform-heading'; heading.textContent = '选择音乐平台';
+    dialog.insertBefore(heading, document.getElementById('login-node-graph'));
   }
   // 触屏没有“鼠标移开”，去掉这句桌面提示。
   var sub = document.querySelector('#playlist-panel .queue-head .fx-sub');

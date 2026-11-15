@@ -212,6 +212,16 @@ import UniformTypeIdentifiers
 
     private func respond(_ connection: NWConnection, url: URL, method: String, headers: [String: String], body: Data) async {
         do {
+            #if os(iOS)
+            if url.path.hasPrefix(AppleLibraryArtworkStore.prefix) {
+                guard method == "GET", let image = await AppleMusicController.shared.artworkData(at: url) else {
+                    send(connection, status: 404, type: "text/plain", data: Data()); return
+                }
+                send(connection, status: 200, type: "image/jpeg", data: image,
+                     extra: ["Cross-Origin-Resource-Policy": "same-origin"])
+                return
+            }
+            #endif
             if url.path == "/api/qishui/audio" {
                 let ticket = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "ticket" }?.value ?? ""
                 let reply = try await qishuiAudio.response(ticket: ticket, method: method, range: headers["range"])

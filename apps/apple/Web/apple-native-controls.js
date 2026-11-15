@@ -45,6 +45,7 @@
     var raw = song && (song.customCover || song.cover || song.picUrl || (song.al && song.al.picUrl) || (song.album && song.album.picUrl)) || '';
     raw = String(raw || '');
     // 前端常把封面写成本地代理地址 /api/cover?url=…，或只在左下角缩略图里有地址：都还原成真实图片地址。
+    if (typeof isAppleLibraryArtwork === 'function' && isAppleLibraryArtwork(raw)) return raw;
     if (!/^https?:\/\//i.test(raw)) {
       var thumb = document.getElementById('thumb-cover');
       if (!raw && thumb && thumb.getAttribute('src')) raw = thumb.getAttribute('src');

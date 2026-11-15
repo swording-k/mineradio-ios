@@ -22,8 +22,12 @@ function saveCustomCoverMap() {
     return false;
   }
 }
+function isAppleLibraryArtwork(src) {
+  return typeof src === 'string' && /^\/api\/apple-music-art\/[a-f0-9-]{36}\/(song|playlist|library)\?id=[^#]+$/i.test(src);
+}
 function isInlineCoverSrc(src) {
   return typeof src === 'string' && (
+    isAppleLibraryArtwork(src) ||
     /^data:image\//i.test(src) ||
     /^blob:/i.test(src) ||
     /^mineradio-local:\/\/cover\//i.test(src)
@@ -40,7 +44,7 @@ function coverProxySrc(url, cacheBust) {
 }
 function coverUrlWithSize(url, size) {
   if (!url || isInlineCoverSrc(url) || !/^https?:\/\//i.test(url)) return url || '';
-  if (!size) return url;
+  if (!size || /^https:\/\/[^/]*\bmzstatic\.com\//i.test(url)) return url;
   var param = 'param=' + size + 'y' + size;
   if (/[?&]param=\d+y\d+/i.test(url)) return url.replace(/([?&])param=\d+y\d+/i, '$1' + param);
   return url + (url.indexOf('?') >= 0 ? '&' : '?') + param;
