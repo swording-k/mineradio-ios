@@ -82,7 +82,7 @@
       trial: !!(song && song.trial),
       immersive: typeof immersiveMode !== 'undefined' && !!immersiveMode,
       splash: !!(body && body.classList.contains('splash-active')),
-      modal: !!(body && body.classList.contains('visual-guide-active')) || !!document.querySelector('.modal-mask.show,.modal.show,.login-easter-overlay.show'),
+      modal: !!(body && body.classList.contains('mr-browsing')) || !!(body && body.classList.contains('visual-guide-active')) || !!document.querySelector('.modal-mask.show,.modal.show,.login-easter-overlay.show'),
       autoHide: typeof controlsAutoHide === 'undefined' ? true : !!controlsAutoHide,
       webBar: webBarRequested,
       // 横屏打开歌单 / 视觉控制台时，原生控制条让出底部空间。
@@ -104,6 +104,7 @@
     lastPayload = payload;
     try { bridge.postMessage({type: 'state', state: JSON.parse(payload)}); } catch (_) {}
   }
+  window.__mineradioApplePushNativeState=function(){push(true);};
   function event(type) { try { bridge.postMessage({type: type}); } catch (_) {} }
 
   function setWebBar(on) {

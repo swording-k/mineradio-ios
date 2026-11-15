@@ -1,4 +1,4 @@
-# Mineradio 苹果客户端深度优化总计划（待评审）
+# Mineradio 苹果客户端深度优化总计划（已批准执行）
 
 基线：iOS 私有分支 feat/apple-music-20261113，419bc75，1.0.3 (26)。本文排后续开发顺序，不是发布说明。取代分散文档的排期，不覆盖其中的历史验证记录。来源：[原总计划及 17 项问题](../IOS_PLAN.md)、[桌面能力盘点](../APPLE_FEATURE_PARITY.md)、[性能定位](../APPLE_PERFORMANCE_DIAGNOSIS.md)、[11 月质量清单](../quality/2026-11-07-apple-playback-polish.md)、[安卓源码对照与交互设计](2026-11-14-mobile-experience.md)。
 

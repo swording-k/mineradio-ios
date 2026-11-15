@@ -212,6 +212,9 @@ import UniformTypeIdentifiers
 
     private func respond(_ connection: NWConnection, url: URL, method: String, headers: [String: String], body: Data) async {
         do {
+            if url.path == "/apple-navigation.css", let file = Bundle.main.resourceURL?.appendingPathComponent("Web/apple-navigation.css"), let css = try? Data(contentsOf: file) {
+                send(connection, status: 200, type: "text/css", data: css); return
+            }
             #if os(iOS)
             if url.path.hasPrefix(AppleLibraryArtworkStore.prefix) {
                 guard method == "GET", let image = await AppleMusicController.shared.artworkData(at: url) else {
