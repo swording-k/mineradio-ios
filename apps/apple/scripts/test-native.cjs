@@ -8,6 +8,7 @@ const providers = ['NeteaseContract','QQMusicNativeAPI','KugouContract','KugouTr
 const netease = ['NeteaseEAPI','NeteaseContract','NeteaseTransport','NeteaseNativeAPI','NeteaseFeatureRoutes','NeteaseFeatureContract'];
 const suites = [
   ['AppleLibraryArtworkStoreTests', ['AppleLibraryArtworkStore']],
+  ['AppleMusicMetadataArtworkTests', ['AppleMusicMetadataArtwork']],
   ['AppleArtworkTests', ['AppleArtwork']],
   ['QishuiAudioDecoderTests', ['QishuiAudioDecoder']],
   ['QishuiAudioStoreTests', ['QishuiCatalogContract','QishuiCatalogAPI','QishuiAudioStore']],

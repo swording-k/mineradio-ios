@@ -7,7 +7,7 @@ import UIKit
 /// iPhone 原生控制条、锁屏 / 控制中心「正在播放」、耳机与锁屏远程控制命令。
 @MainActor final class NowPlayingModel: ObservableObject {
     struct State: Equatable {
-        var hasSong = false, title = "", artist = "", cover = ""
+        var hasSong = false, title = "", artist = "", cover = "", provider = ""
         var playing = false, current = 0.0, duration = 0.0
         var liked = false, trial = false, immersive = false, splash = false, modal = false
         var autoHide = true, webBar = false, panel = false
@@ -46,7 +46,7 @@ import UIKit
             func s(_ k: String) -> String { String((raw[k] as? String ?? "").prefix(2048)) }
             func d(_ k: String) -> Double { let v = (raw[k] as? NSNumber)?.doubleValue ?? 0; return v.isFinite && v > 0 ? v : 0 }
             func b(_ k: String) -> Bool { raw[k] as? Bool ?? false }
-            var next = State(hasSong: b("hasSong"), title: s("title"), artist: s("artist"), cover: s("cover"),
+            var next = State(hasSong: b("hasSong"), title: s("title"), artist: s("artist"), cover: s("cover"), provider: s("provider"),
                              playing: b("playing"), current: d("current"), duration: d("duration"),
                              liked: b("liked"), trial: b("trial"), immersive: b("immersive"), splash: b("splash"), modal: b("modal"),
                              autoHide: raw["autoHide"] as? Bool ?? true, webBar: b("webBar"), panel: b("panel"))

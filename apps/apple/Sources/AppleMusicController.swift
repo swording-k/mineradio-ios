@@ -90,6 +90,19 @@ import MusicKit
     private func songArtwork(_ song: Song, size: Int) async -> Data? {
         if let direct = await AppleMusicArtwork.jpeg(song.artwork, size: size) { return direct }
         if let local = AppleMusicArtwork.localSong(song, size: size) { return local }
+        if song.id.rawValue.hasPrefix("i."), song.id.rawValue.utf8.count < 256 {
+            var components = URLComponents(string: "https://api.music.apple.com")!
+            components.path = "/v1/me/library/songs/" + song.id.rawValue
+            components.queryItems = [URLQueryItem(name: "include", value: "catalog,albums")]
+            do {
+                let response = try await MusicDataRequest(urlRequest: URLRequest(url: components.url!)).response()
+                if let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+                   let url = AppleMusicMetadataArtwork.url(json, size: size),
+                   let data = await AppleMusicArtwork.jpeg(url: url, size: size) { return data }
+            } catch {
+                AppleDiagnostics.shared.recordAppleArtwork(stage: 1, success: false, code: (error as NSError).code)
+            }
+        }
         // Library relationships and catalog relationships are distinct; try the
         // library album before the catalog. Do not search by a vaguely similar name.
         if let detailed = try? await song.with(.albums, preferredSource: .library) {
@@ -120,12 +133,16 @@ import MusicKit
                 let url = URL(string: self.artworkStore.path(.song, song.id.rawValue))!
                 if await self.artworkData(at: url) != nil {
                     guard !Task.isCancelled else { return }
+                    AppleDiagnostics.shared.recordAppleArtwork(stage: 2, success: true)
                     self.artworkVersions[song.id.rawValue] = (self.artworkVersions[song.id.rawValue] ?? 0) + 1
                     self.emit(); return
                 }
             }
+            guard !Task.isCancelled else { return }
+            self?.recordArtworkMiss()
         }
     }
+    private func recordArtworkMiss() { AppleDiagnostics.shared.recordAppleArtwork(stage: 2, success: false) }
     private func catalogArtworkID(_ song: Song) -> String? {
         if song.id.rawValue.allSatisfy({ $0.isNumber }) { return song.id.rawValue }
         guard let parameters = song.playParameters,

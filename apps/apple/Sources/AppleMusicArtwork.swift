@@ -5,6 +5,9 @@ import UIKit
 @MainActor enum AppleMusicArtwork {
     static func jpeg(_ artwork: Artwork?, size: Int) async -> Data? {
         guard let url = artwork?.url(width: size, height: size) else { return nil }
+        return await jpeg(url: url, size: size)
+    }
+    static func jpeg(url: URL, size: Int) async -> Data? {
         let data: Data
         if url.scheme?.lowercased() == "https", AppleMediaPolicy.allowed(url) {
             guard let hit = await AppleCoverCache.shared.image(for: url, referer: AppleMediaPolicy.referer(url)) else { return nil }

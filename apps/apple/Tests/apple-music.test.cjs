@@ -50,3 +50,18 @@ test('first native playback uses the original stage fade-in and play icon',()=>{
  ctx.window.__mineradioAppleMusicReceive({active:true,playing:true,current:0,duration:180,song:{id:'1',provider:'applemusic'}});
  assert(calls.some(v=>Array.isArray(v)&&v[0]===0&&v[1]===1));assert(calls.includes(true));
 });
+
+test('late artwork never clears or refetches lyrics for the same native song',()=>{
+ const {ctx}=setup();let fetches=0;ctx.fetchLyric=()=>{fetches++;};
+ ctx.window.__mineradioAppleMusicReceive({active:true,playing:true,current:4,duration:180,song:{id:'a',provider:'applemusic',cover:'/old'}});
+ const token=ctx.trackSwitchToken;
+ ctx.window.__mineradioAppleMusicReceive({active:true,playing:true,current:5,duration:180,song:{id:'a',provider:'applemusic',cover:'/new'}});
+ assert.equal(ctx.trackSwitchToken,token);assert.equal(fetches,1);
+});
+test('native lyric media ignores a previous HTML source ended flag',()=>{
+ const {ctx}=setup();ctx.audio={ended:true,paused:true,currentTime:0};
+ ctx.window.__mineradioAppleMusicReceive({active:true,playing:true,current:12,duration:197,song:{id:'a',provider:'applemusic'}});
+ const src=fs.readFileSync('public/js/modules/02-visual/14-stage-lyrics-rendering.js','utf8');
+ vm.runInNewContext(src.slice(src.indexOf('function stageLyricPlaybackMedia('),src.indexOf('function stageLyricPlaybackSeconds(')),ctx);
+ const media=ctx.stageLyricPlaybackMedia();assert.equal(media.currentTime,12);assert.equal(media.ended,false);assert.equal(media.paused,false);
+});

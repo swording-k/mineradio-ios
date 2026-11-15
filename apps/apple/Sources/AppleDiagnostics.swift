@@ -55,6 +55,11 @@ import Darwin
         if result == KERN_SUCCESS { values["hostFootprintBytes"] = Double(info.phys_footprint) }
         append(event, metrics: values)
     }
+    // Fixed numeric stages only; never record song IDs, URLs, tokens or library data.
+    func recordAppleArtwork(stage: Int, success: Bool, code: Int = 0) {
+        append("apple-artwork", metrics: ["stage": Double(stage), "success": success ? 1 : 0,
+                                         "code": Double(max(-999_999, min(999_999, code)))])
+    }
     private func append(_ event: String, metrics: [String: Double]) {
         records.append(Record(event: event, timestamp: Date().timeIntervalSince1970, uptime: ProcessInfo.processInfo.systemUptime, session: session, metrics: metrics))
         records = Array(records.suffix(capacity))

@@ -72,6 +72,7 @@
     var song = currentSong(), heart = document.getElementById('heart-btn');
     return {
       hasSong: !!song,
+      provider: song ? String(song.provider || song.source || '') : '',
       title: song ? String(song.name || song.title || '') : '',
       artist: artistOf(song),
       cover: coverOf(song),

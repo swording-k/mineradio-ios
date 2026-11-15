@@ -47,6 +47,7 @@ struct NativeControlBar: View {
                 HStack(spacing: 10) {
                     cover
                     VStack(alignment: .leading, spacing: 2) {
+                        sourceBadge
                         Text(state.title.isEmpty ? "未在播放" : state.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                         Text(state.trial ? "试听片段 · " + state.artist : state.artist)
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.62)).lineLimit(1)
@@ -75,6 +76,7 @@ struct NativeControlBar: View {
         HStack(spacing: 10) {
             cover
             VStack(alignment: .leading, spacing: 2) {
+                sourceBadge
                 Button { model.command("detail") } label: {
                     Text(state.title.isEmpty ? "未在播放" : state.title)
                         .font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -129,8 +131,11 @@ struct NativeControlBar: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(state.title.isEmpty ? "未在播放" : state.title)
                                 .font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                            Text(state.trial ? "试听片段 · " + state.artist : state.artist)
-                                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.62)).lineLimit(1)
+                            HStack(spacing: 6) {
+                                sourceBadge
+                                Text(state.trial ? "试听片段 · " + state.artist : state.artist)
+                                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.62)).lineLimit(1)
+                            }
                         }
                         Spacer(minLength: 0)
                     }
@@ -155,6 +160,14 @@ struct NativeControlBar: View {
             }
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+    }
+
+    @ViewBuilder private var sourceBadge: some View {
+        if state.provider == "applemusic" {
+            Label("Music", systemImage: "apple.logo")
+                .font(.system(size: 10, weight: .medium)).foregroundStyle(.white.opacity(0.65))
+                .accessibilityLabel("Apple Music")
+        }
     }
 
     private var cover: some View {

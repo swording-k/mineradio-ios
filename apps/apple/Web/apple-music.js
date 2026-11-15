@@ -3,8 +3,9 @@
   var bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.appleMusic;
   if (!bridge || window.__mineradioAppleMusicInstalled) return;
   window.__mineradioAppleMusicInstalled = true;
-  var state = {active: false}, key = '', receivedAt = 0;
+  var state = {active: false}, key = '', coverKey = '', receivedAt = 0;
   function position(){var value=Number(state.current)||0;if(state.playing)value+=Math.min(1.5,Math.max(0,(Date.now()-receivedAt)/1000));return state.duration>0?Math.min(state.duration,value):value;}
+  window.__mineradioAppleMusicPlaybackState = function(){return {active:!!state.active,current:position(),duration:Number(state.duration)||0,paused:!state.playing,ended:false};};
   function command(action, value) {
     return bridge.postMessage({action: action, value: value}).then(function (r) {
       if (r && r.ok === false && typeof showToast === 'function') showToast(r.message);
@@ -34,9 +35,11 @@
     if(resumed)call(typeof markStageLyricsPlaybackResume === 'function' && markStageLyricsPlaybackResume, 'apple-music');
     if (!state.song) return;
     var song = state.song;
-    var visualKey=String(song.id)+'|'+String(song.cover||'');
+    var visualKey=String(song.id);
+    var nextCover=String(song.cover||'');
+    if(key===visualKey && coverKey!==nextCover){coverKey=nextCover;var existing=playQueue.find(function(s){return s.provider==='applemusic'&&String(s.id)===String(song.id);});if(existing)existing.cover=nextCover;call(typeof loadCoverFromUrl==='function'&&loadCoverFromUrl,nextCover,{trackToken:trackSwitchToken});call(typeof updateControlTrackInfo==='function'&&updateControlTrackInfo,song);}
     if (key !== visualKey) {
-      key = visualKey; trackSwitchToken++;
+      key = visualKey; coverKey=nextCover; trackSwitchToken++;
       var found=playQueue.findIndex(function(s){return s.provider==='applemusic' && String(s.id)===String(song.id);});
       if(found>=0){currentIdx=found;playQueue[found]=Object.assign({},playQueue[found],song);}else{playQueue=[song];currentIdx=0;}
       if(!firstPlayDone && typeof tweenParticleAlpha==='function' && typeof uniforms!=='undefined')tweenParticleAlpha(uniforms.uAlpha.value||0,1,220);

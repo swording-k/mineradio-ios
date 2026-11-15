@@ -81,3 +81,8 @@ test('visual guide suppresses native overlay and restores it after completion', 
   f.body.classList.remove('visual-guide-active'); f.tick();
   assert.equal(f.posts.at(-1).state.modal, false);
 });
+
+test('Apple Music provider reaches the native control bar instead of losing its badge',()=>{
+ const f=fixture();f.context.playQueue=[{id:'i.opaque',name:'Song',artist:'Artist',provider:'applemusic'}];f.tick();
+ assert.equal(f.posts.at(-1).state.provider,'applemusic');
+});

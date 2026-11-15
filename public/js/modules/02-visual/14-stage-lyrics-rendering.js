@@ -241,7 +241,7 @@ function stageLyricRestoreWarmupSeconds() {
     clearStageLyricRestoreWarmup();
     return null;
   }
-  var actual = audio && isFinite(Number(audio.currentTime)) ? Math.max(0, Number(audio.currentTime) || 0) : 0;
+  var actual = Math.max(0, stageLyricPlaybackMedia().currentTime || 0);
   if (actual > 0.35 && Math.abs(actual - seconds) <= 1.25) {
     return actual;
   }
@@ -1512,6 +1512,14 @@ function upgradeCurrentStageLyricFromPreparedTrack(reason) {
 function stageLyricProgressPreviewActive() {
   return typeof isProgressDragPreviewActive === 'function' && isProgressDragPreviewActive();
 }
+// Native protected players have no HTMLAudioElement source. Never let a stale
+// ended HTML source suppress the current native track's lyrics.
+function stageLyricPlaybackMedia() {
+  var native = window.__mineradioAppleMusicPlaybackState && window.__mineradioAppleMusicPlaybackState();
+  if (native && native.active) return { available: true, currentTime: native.current, duration: native.duration, paused: native.paused, ended: native.ended };
+  return { available: !!audio, currentTime: audio ? Number(audio.currentTime) || 0 : 0, duration: audio ? Number(audio.duration) || 0 : 0,
+    paused: !!(audio && audio.paused), ended: !!(audio && audio.ended), hasSource: !!(audio && audio.src) };
+}
 function stageLyricPlaybackSeconds() {
   var preview = typeof getProgressDragPreviewSeconds === 'function' ? getProgressDragPreviewSeconds() : null;
   if (preview != null && isFinite(Number(preview))) return Math.max(0, Number(preview));
@@ -2640,7 +2648,7 @@ function getLyricLineProgress(line, nextLine, now) {
     return 1;
   }
   now += 0.020;
-  var nextT = nextLine && nextLine.t > line.t ? nextLine.t : Math.min((audio && audio.duration) || now + 4, line.t + (line.duration || 4.8));
+  var nextT = nextLine && nextLine.t > line.t ? nextLine.t : Math.min(stageLyricPlaybackMedia().duration || now + 4, line.t + (line.duration || 4.8));
   var span = Math.max(0.75, nextT - line.t);
   var prog = Math.max(0, Math.min(1, (now - line.t) / span));
   return prog * prog * (3 - 2 * prog);
@@ -3087,8 +3095,9 @@ function tickLyricsParticles() {
   }
   var previewingSeek = stageLyricProgressPreviewActive();
   var holdLyricsOnPause = !fx || fx.lyricPauseHold !== false;
-  var pausedWithTrack = !!(holdLyricsOnPause && audio && audio.src && audio.paused && !audio.ended && lyricsLines && lyricsLines.length);
-  if (!audio || !lyricsLines.length || (audio && audio.ended)) {
+  var media = stageLyricPlaybackMedia();
+  var pausedWithTrack = !!(holdLyricsOnPause && media.available && (media.hasSource || media.duration > 0) && media.paused && !media.ended && lyricsLines && lyricsLines.length);
+  if (!media.available || !lyricsLines.length || media.ended) {
     retireCurrentStageLyricForIdle();
     return;
   }
