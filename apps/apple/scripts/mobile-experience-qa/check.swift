@@ -74,7 +74,7 @@ web.autoresizingMask=[.width,.height];win.contentView!.addSubview(web);win.order
  try await image("created-playlist")
  print("persistent built-in playlist creation PASS")
  // Exercise the actual shared WebGL cover loader with an opaque library ID.
- _=try await js("closeLocalBeatModal();closeLoginModal();if(window.gsap)gsap.globalTimeline.time(gsap.globalTimeline.time()+1);window.__mineradioAppleMusicReceive({active:true,playing:false,current:12,duration:197,song:{id:'i.opaque',name:'Beautiful People',artist:'Ed Sheeran',provider:'applemusic',cover:'/api/apple-music-art/92DDAB59-4702-4C59-804C-22F34B68DFE5/song?id=i.opaque&art=1'}});window.__mineradioNavigation.navigate('stage');void 0");await wait(1500)
+ _=try await js("closeLocalBeatModal();closeLoginModal();if(window.gsap)gsap.globalTimeline.time(gsap.globalTimeline.time()+1);window.__mineradioAppleMusicReceive({active:true,playing:true,current:12,duration:197,song:{id:'i.opaque',name:'Beautiful People',artist:'Ed Sheeran',provider:'applemusic',cover:'/api/apple-music-art/92DDAB59-4702-4C59-804C-22F34B68DFE5/song?id=i.opaque&art=1'}});window.__mineradioNavigation.navigate('stage');void 0");await wait(1500)
  let cover=try await js("JSON.stringify({cover:uniforms.uHasCover.value,thumb:document.getElementById('thumb-cover').getAttribute('src'),duplicate:!!document.getElementById('mr-return')||!!document.getElementById('apple-library-btn')})");print("opaque cover pipeline",cover ?? "")
  guard (try await js("uniforms.uHasCover.value>0.5&&getComputedStyle(document.getElementById('empty-home')).display==='none'&&!document.getElementById('mr-return')&&!document.getElementById('apple-library-btn')") as? Bool)==true else{exit(15)}
  let homeHit=try await js("(()=>{let b=document.getElementById('home-btn'),r=b.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b || b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))})()");guard homeHit as? Bool==true else{try await image("home-hit-failure");print(try await js("(()=>{let b=document.getElementById('home-btn'),r=b.getBoundingClientRect();return JSON.stringify({rect:r.toJSON(),hidden:b.hidden,css:b.getAttribute('style'),parent:b.parentElement.outerHTML.slice(0,250),hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,250)})})()") ?? "");exit(16)}
@@ -83,6 +83,10 @@ web.autoresizingMask=[.width,.height];win.contentView!.addSubview(web);win.order
  _=try await js("window.__mineradioNavigation.navigate('library');window.__mineradioNavigationTick();void 0");await wait(150)
  guard (try await js("document.querySelector('#mr-mini img').naturalWidth>0") as? Bool)==true else{exit(17)}
  try await image("apple-artwork-mini-fixture")
+ let lyricOK=try await js("lyricsLines.some(l=>!l.fallback) && stageLyricPlaybackMedia().currentTime>=12");print("matched lyric pipeline",lyricOK ?? "");guard lyricOK as? Bool==true else{exit(18)}
+ // Explicit close is always visible, including from a nested playlist page.
+ _=try await js("document.getElementById('mr-close').click();void 0");await wait(100)
+ guard (try await js("window.__mineradioNavigation.state().screen==='stage'") as? Bool)==true else{exit(19)}
  print("MOBILE QA COMPLETE")
  print("errors",try await js("JSON.stringify(window.__errors)") ?? "")
  exit(0)

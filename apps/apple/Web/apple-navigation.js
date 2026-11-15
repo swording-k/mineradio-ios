@@ -5,7 +5,7 @@
   var detailTracks=[],detailPage=null,searchTracks=[],rowOffsets={};
   var filter='all', query='', generation=0, loading=false, scroll=0, searchPages=null, shown=60;
   var root=document.createElement('section');root.id='mr-browser';root.setAttribute('aria-label','音乐资料库');
-  root.innerHTML='<header><div><small>MINERADIO</small><h1>我的歌单</h1></div><button data-act="connect" aria-label="连接音乐平台">连接平台 ＋</button></header><nav aria-label="音乐导航"><button data-view="library">歌单</button><button data-view="search">搜索</button><button data-view="queue">正在播放</button></nav><div id="mr-tools"></div><div id="mr-content" tabindex="-1"></div><footer id="mr-mini" hidden><button data-act="stage" id="mr-mini-info" aria-label="打开播放舞台"><img alt=""><span><b></b><small></small></span></button><button data-act="toggle" aria-label="播放或暂停">播放</button><button data-act="next" aria-label="下一首">下一首</button></footer>';
+  root.innerHTML='<header><div><small>MINERADIO</small><h1>我的歌单</h1></div><div class="mr-header-actions"><button data-act="connect" aria-label="连接音乐平台">平台</button><button data-act="stage" id="mr-close" aria-label="关闭歌单，返回播放">返回播放 ⌄</button></div></header><nav aria-label="音乐导航"><button data-view="library">歌单</button><button data-view="search">搜索</button><button data-view="queue">播放队列</button></nav><div id="mr-tools"></div><div id="mr-content" tabindex="-1"></div><footer id="mr-mini" hidden><button data-act="stage" id="mr-mini-info" aria-label="打开播放舞台"><img alt=""><span><b></b><small></small></span></button><button data-act="toggle" aria-label="播放或暂停">播放</button><button data-act="next" aria-label="下一首">下一首</button></footer>';
   body.appendChild(root);
   // One canonical entry; the legacy button has an addEventListener as well as
   // onclick. Remove that node rather than leaving both handlers attached.
@@ -21,9 +21,8 @@
   function button(text,fn){var n=el('button',text);n.type='button';n.onclick=fn;return n;}
   function note(text,retry){content.replaceChildren(el('p',text));if(retry)content.appendChild(button('重试',retry));}
   function song(){return typeof playQueue!=='undefined'&&playQueue[currentIdx]||null;}
-  function openStage(){if(!song()){showToast('先选择一首歌，再进入舞台');return;}navigate('stage');}
+  function openStage(){navigate('stage');}
   function navigate(next){
-    if(next==='stage'&&!song())return openStage();
     if(screen!=='stage')scroll=content.scrollTop;
     screen=next;root.querySelector('h1').textContent=next==='search'?'搜索':next==='queue'?'正在播放':'我的歌单';body.classList.toggle('mr-browsing',screen!=='stage');
     if(next!=='stage'){if(typeof closeVisualGuide==='function')closeVisualGuide(false);if(typeof toggleFxPanel==='function')toggleFxPanel(false);if(typeof togglePlaylistPanel==='function')togglePlaylistPanel(false);tab=next;root.hidden=false;if(next==='queue'){queueUI();}else if(next==='search'){tracks=searchTracks;searchUI();}else if(selected){tracks=detailTracks;page=detailPage;if(selected.provider==='local')localLibrary();else detailUI();}else libraryUI();content.scrollTop=scroll;}
@@ -40,7 +39,7 @@
     ['all'].concat(Array.from(new Set(userPlaylists.map(function(p){return p.provider||'netease';})))).forEach(function(p){var b=button(p==='all'?'全部':playlistProviderName(p),function(){filter=p;shown=60;libraryUI();});b.setAttribute('aria-pressed',String(filter===p));choices.appendChild(b);});tools.appendChild(choices);
     var actions=el('div');actions.className='mr-actions';actions.append(button('导入音乐',function(){triggerUploadInput('audio');}),button('本地曲库',localLibrary),button('新建歌单 ＋',function(){createForm();}),button('刷新',refresh));tools.append(actions);
     content.replaceChildren();var lists=userPlaylists.filter(function(p){return filter==='all'||p.provider===filter;});
-    if(!lists.length){var welcome=el('div');welcome.className='mr-welcome-card';welcome.append(el('small','让音乐，有画面。'),el('h2','从你的第一首歌开始'),el('p','连接常用的音乐平台，或导入这台设备上的音频。'),button('连接音乐平台',function(){showLoginModal();}),button('导入本地音乐',function(){triggerUploadInput('audio');}));content.append(welcome);return;}
+    if(!lists.length){var welcome=el('div');welcome.className='mr-welcome-card';welcome.append(el('h2','还没有歌单'),el('p','连接常用的音乐平台，或导入这台设备上的音频。'),button('连接音乐平台',function(){showLoginModal();}),button('导入本地音乐',function(){triggerUploadInput('audio');}));content.append(welcome);return;}
     var heading=el('div');heading.className='mr-section';heading.append(el('h2','歌单'),el('small',lists.length+' 个'));content.append(heading);
     lists.slice(0,shown).forEach(function(p){content.appendChild(row(p.name||'未命名歌单',playlistProviderName(p.provider)+(p.trackCount?' · '+p.trackCount+' 首':''),p.cover,function(){scroll=content.scrollTop;selected=p;loadDetail(false);}));});
     if(lists.length>shown)content.append(button('显示更多歌单',function(){shown+=60;var top=content.scrollTop;libraryUI();content.scrollTop=top;}));
@@ -107,7 +106,7 @@
   var command=window.__mineradioAppleCommand;if(command)window.__mineradioAppleCommand=function(name,value){if(name==='library'){selected=null;navigate('library');return true;}return command(name,value);};
   var libraryButton=document.getElementById('apple-library-btn');if(libraryButton)libraryButton.onclick=function(e){e.stopPropagation();selected=null;navigate('library');};
   var homeVisibility=shouldShowEmptyHome;shouldShowEmptyHome=function(){return screen==='stage'?false:homeVisibility.apply(this,arguments);};
-  var viewport=window.matchMedia('(max-width: 767px)');function fit(){if(viewport.matches&&screen==='stage'&&!song())navigate('library');body.classList.toggle('mr-wide-browser',!viewport.matches);}
+  var viewport=window.matchMedia('(max-width: 767px)');function fit(){body.classList.toggle('mr-wide-browser',!viewport.matches);}
   viewport.addEventListener('change',fit);fit();
   var fps=getAdaptiveRenderFps;getAdaptiveRenderFps=function(){return body.classList.contains('mr-browsing')?2:fps.apply(this,arguments);};
   var cadence=resolveAdaptiveRenderCadence;resolveAdaptiveRenderCadence=function(){return body.classList.contains('mr-browsing')?null:cadence.apply(this,arguments);};

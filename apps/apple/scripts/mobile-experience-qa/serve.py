@@ -21,6 +21,12 @@ class Handler(SimpleHTTPRequestHandler):
    import re
    data=re.sub(r'<link\s+href="https://fonts.googleapis.com/[^>]+>','',(ROOT/'public/index.html').read_text()).encode();mime='text/html;charset=utf-8'
   elif path.startswith('/api/apple-music-art/') or path=='/api/cover':data=ART;mime='image/svg+xml'
+  elif path=='/api/search':
+   import json
+   data=json.dumps({'songs':[{'id':901,'name':'Beautiful People (feat. Khalid)','artist':'Ed Sheeran / Khalid','duration':197866}]}).encode();mime='application/json'
+  elif path=='/api/lyric':
+   import json
+   data=json.dumps({'lyric':'[00:00.00]QA line one\n[00:10.00]QA line two\n[00:20.00]QA line three'}).encode();mime='application/json'
   elif path.startswith('/api/'):data=b'{"ok":true,"loggedIn":false,"songs":[],"tracks":[],"playlists":[],"items":[]}';mime='application/json'
   else:return super().do_GET()
   self.send_response(200);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)

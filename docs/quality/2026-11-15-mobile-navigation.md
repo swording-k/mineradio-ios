@@ -77,3 +77,34 @@ separate rollback commit, and existing user data is not migrated or discarded.
   remain unverified on a real signed-in device. Do not label that specific report
   resolved solely because a synthetic texture loaded. No physical device control
   or TestFlight/App Store upload performed.
+
+## Follow-up: build 29 — playback exit and native metadata
+
+- Library is a plain dark list with stage-consistent glass accents, no green hero
+  or slogan. A fixed, text-labelled Return to Playback action appears in the
+  header on every browser subpage, including empty/new libraries; closing no
+  longer requires knowing the mini-player title is a navigation button.
+- Native controls previously had no provider in their state contract. The web
+  bridge now forwards it and SwiftUI displays an Apple Music source badge.
+- The native artwork resolver can now read the exact library song's Apple Music
+  API representation (include=catalog,albums) with MusicDataRequest's SDK-managed
+  authorization, expanding only that resource's Apple CDN artwork template. A
+  pure Swift regression rejects unrelated artist art and deceptive hosts.
+- Important lyrics bug: tickLyricsParticles consulted the previous HTML audio's
+  ended/paused state even during native protected playback. Native lyrics now
+  use a separate media state/clock. Late cover revisions no longer increment the
+  track-switch token or reset/refetch that same song's lyrics.
+- An anonymous real NeteaseNativeAPI probe found the 197866ms Beautiful People
+  (feat. Khalid), Ed Sheeran / Khalid recording and a nonempty lyric response.
+  No personal account was used and no full lyrics are included in this repo.
+- 91 Apple adapter tests and 228 shared tests pass; native metadata parser test,
+  project quick check and signed iOS Release build pass. WebKit QA checks seven
+  sizes, persistent custom playlists, explicit exit, local WAV and mini pause,
+  image ingestion and the full matched-lyric pipeline. Those UI fixtures supply
+  synthetic art/lyric lines; they are not a live MusicKit account acceptance run.
+- Read-only device information confirmed the connected iPhone 14 Pro has build
+  28. Its existing diagnostic log has no artwork-specific errors. No install,
+  launch, touch or account change was performed. Build 29 now records only numeric
+  artwork-stage outcomes/error codes locally, excluding names, IDs and URLs.
+  The real-account artwork result is still unverified; an Apple Music App Service
+  configuration error cannot be ruled out from source or simulator tests.

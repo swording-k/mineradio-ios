@@ -149,3 +149,11 @@ including opaque library IDs, album relationships and bounded late-art retries.
 88 adapter tests, native artwork-cache checks and a signed Release build passed.
 See docs/quality/2026-11-15-mobile-navigation.md for exact evidence and remaining
 real-account/device gates; this is not a claim of stable MusicKit artwork playback.
+
+### Build 29
+
+Explicit Return to Playback on all library screens; restrained dark list design.
+Native Apple Music badge, exact library-resource artwork lookup, and a native
+lyric media state that ignores an ended HTML source. Late artwork preserves lyrics.
+91 JS adapter tests, 228 shared tests, native metadata parsing, WebKit fixtures
+and Release build passed. Actual MusicKit library covers remain a device gate.
