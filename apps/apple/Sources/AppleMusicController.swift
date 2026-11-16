@@ -65,12 +65,19 @@ import MusicKit
         } catch { fail(error); return false }
     }
     func artworkData(at url: URL) async -> Data? {
-        guard !detached, MusicAuthorization.currentStatus == .authorized else { return nil }
+        guard !detached, MusicAuthorization.currentStatus == .authorized else {
+            AppleDiagnostics.shared.recordAppleArtwork(stage: 5, success: false, code: detached ? 1 : 2); return nil
+        }
         return await artworkStore.image(at: url) { [weak self] kind, id in
             guard let self else { return nil }
             switch kind {
             case .song:
-                guard let song = self.songCache[id] else { return nil }
+                // A queue entry can resolve to a new library/catalog ID after playback
+                // starts. Keep the emitting identity available to the image endpoint.
+                guard let song = self.songCache[id] ?? (self.currentSong?.id.rawValue == id ? self.currentSong : nil) else {
+                    AppleDiagnostics.shared.recordAppleArtwork(stage: 6, success: false); return nil
+                }
+                AppleDiagnostics.shared.recordAppleArtwork(stage: 7, success: true)
                 return await self.songArtwork(song, size: 600)
             case .library:
                 for song in self.songs.prefix(8) {
@@ -306,6 +313,7 @@ import MusicKit
                                   "current": max(0, player.playbackTime), "duration": duration]
         var display: DisplayArtwork?
         if let song = currentSong {
+            remember([song])
             if active, let art = player.queue.currentEntry?.artwork ?? song.artwork {
                 display = DisplayArtwork(path: artworkStore.path(.song, song.id.rawValue), artwork: art)
             }

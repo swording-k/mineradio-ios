@@ -132,3 +132,26 @@ The existing DIY button joins the header layout on short landscape viewports.
 The native playback menu also opens the visual settings directly. WebKit hit
 testing at 852×393, 667×375 and 393×852 hit the button and changed its mode in
 all three cases, including rotation back to portrait.
+
+## Build 31: real-account stage artwork accepted (2026-11-16)
+
+Build 30's native ArtworkImage thumbnail could display artwork independently of
+the JPEG endpoint. It therefore did not prove the particle stage had received
+an image. The endpoint only looked in the earlier library/search song cache;
+native playback emissions now remember the exact current Song, and a matching
+current queue Song may also resolve a cache miss. This covers native queue
+identity changes without treating a device-library number as a catalog ID.
+
+On build 31, the owner confirmed the stage cover finally appeared. Read-only
+local diagnostics also contained three stage-2 success records after playback,
+confirming actual native JPEG resolution, alongside stage-7 resolver entries.
+The earlier logs did not contain enough boundary diagnostics to prove the
+precise prior missing field/identity; do not infer every past miss had the same
+cause. Diagnostics added here record only fixed numeric codes.
+
+Signed Release build succeeded; 91 Apple JS tests passed; WebKit integration
+passed cover texture ingestion, lyric state, playlist roundtrip, and portrait/
+landscape DIY hit testing. Build 31 was installed on the owner's iPhone; the
+owner operated playback. iPad was untouched. No TestFlight or App Store upload.
+Apple Music audio remains native. Timestamped lyrics are still explicitly
+labelled as a matched NetEase source; this does not switch the audio source.
